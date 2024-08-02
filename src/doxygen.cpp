@@ -12605,7 +12605,7 @@ void parseInput()
   printSectionsTree();
 }
 
-void generateOutput()
+std::vector<TextStream> generateOutput()
 {
   AUTO_TRACE();
   /**************************************************************************
@@ -12622,40 +12622,9 @@ void generateOutput()
     exit(0);
   }
 
-  bool generateHtml  = Config_getBool(GENERATE_HTML);
-  bool generateLatex = Config_getBool(GENERATE_LATEX);
-  bool generateMan   = Config_getBool(GENERATE_MAN);
-  bool generateRtf   = Config_getBool(GENERATE_RTF);
-  bool generateDocbook = Config_getBool(GENERATE_DOCBOOK);
-
 
   g_outputList = new OutputList;
-  if (generateHtml)
-  {
-    g_outputList->add<HtmlGenerator>();
-    HtmlGenerator::init();
-    HtmlGenerator::writeTabData();
-  }
-  if (generateLatex)
-  {
-    g_outputList->add<LatexGenerator>();
-    LatexGenerator::init();
-  }
-  if (generateDocbook)
-  {
-    g_outputList->add<DocbookGenerator>();
-    DocbookGenerator::init();
-  }
-  if (generateMan)
-  {
-    g_outputList->add<ManGenerator>();
-    ManGenerator::init();
-  }
-  if (generateRtf)
-  {
-    g_outputList->add<RTFGenerator>();
-    RTFGenerator::init();
-  }
+
   if (Config_getBool(USE_HTAGS))
   {
     Htags::useHtags = TRUE;
@@ -12674,86 +12643,6 @@ void generateOutput()
   //printf("writing style info\n");
   g_outputList->writeStyleInfo(0); // write first part
   g_s.end();
-
-  bool searchEngine      = Config_getBool(SEARCHENGINE);
-  bool serverBasedSearch = Config_getBool(SERVER_BASED_SEARCH);
-
-  g_s.begin("Generating search indices...\n");
-  if (searchEngine && !serverBasedSearch && generateHtml)
-  {
-    createJavaScriptSearchIndex();
-  }
-
-  // generate search indices (need to do this before writing other HTML
-  // pages as these contain a drop down menu with options depending on
-  // what categories we find in this function.
-  if (generateHtml && searchEngine)
-  {
-    QCString searchDirName = Config_getString(HTML_OUTPUT)+"/search";
-    Dir searchDir(searchDirName.str());
-    if (!searchDir.exists() && !searchDir.mkdir(searchDirName.str()))
-    {
-      term("Could not create search results directory '%s' $PWD='%s'\n",
-          qPrint(searchDirName),Dir::currentDirPath().c_str());
-    }
-    HtmlGenerator::writeSearchData(searchDirName);
-    if (!serverBasedSearch) // client side search index
-    {
-      writeJavaScriptSearchIndex();
-    }
-  }
-  g_s.end();
-
-  // copy static stuff
-  if (generateHtml)
-  {
-    FTVHelp::generateTreeViewImages();
-    copyStyleSheet();
-    copyLogo(Config_getString(HTML_OUTPUT));
-    copyIcon(Config_getString(HTML_OUTPUT));
-    copyExtraFiles(Config_getList(HTML_EXTRA_FILES),"HTML_EXTRA_FILES",Config_getString(HTML_OUTPUT));
-  }
-  if (generateLatex)
-  {
-    copyLatexStyleSheet();
-    copyLogo(Config_getString(LATEX_OUTPUT));
-    copyIcon(Config_getString(LATEX_OUTPUT));
-    copyExtraFiles(Config_getList(LATEX_EXTRA_FILES),"LATEX_EXTRA_FILES",Config_getString(LATEX_OUTPUT));
-  }
-  if (generateDocbook)
-  {
-    copyLogo(Config_getString(DOCBOOK_OUTPUT));
-    copyIcon(Config_getString(DOCBOOK_OUTPUT));
-  }
-  if (generateRtf)
-  {
-    copyLogo(Config_getString(RTF_OUTPUT));
-    copyIcon(Config_getString(RTF_OUTPUT));
-    copyExtraFiles(Config_getList(RTF_EXTRA_FILES),"RTF_EXTRA_FILES",Config_getString(RTF_OUTPUT));
-  }
-
-  FormulaManager &fm = FormulaManager::instance();
-  if (fm.hasFormulas() && generateHtml
-      && !Config_getBool(USE_MATHJAX))
-  {
-    g_s.begin("Generating images for formulas in HTML...\n");
-    fm.generateImages(Config_getString(HTML_OUTPUT), Config_getEnum(HTML_FORMULA_FORMAT)==HTML_FORMULA_FORMAT_t::svg ?
-        FormulaManager::Format::Vector : FormulaManager::Format::Bitmap, FormulaManager::HighDPI::On);
-    g_s.end();
-  }
-  if (fm.hasFormulas() && generateRtf)
-  {
-    g_s.begin("Generating images for formulas in RTF...\n");
-    fm.generateImages(Config_getString(RTF_OUTPUT),FormulaManager::Format::Bitmap);
-    g_s.end();
-  }
-
-  if (fm.hasFormulas() && generateDocbook)
-  {
-    g_s.begin("Generating images for formulas in Docbook...\n");
-    fm.generateImages(Config_getString(DOCBOOK_OUTPUT),FormulaManager::Format::Bitmap);
-    g_s.end();
-  }
 
   g_s.begin("Generating example documentation...\n");
   generateExampleDocs();
@@ -12791,13 +12680,6 @@ void generateOutput()
   generateNamespaceDocs();
   g_s.end();
 
-  if (Config_getBool(GENERATE_LEGEND))
-  {
-    g_s.begin("Generating graph info page...\n");
-    writeGraphInfo(*g_outputList);
-    g_s.end();
-  }
-
   g_s.begin("Generating directory documentation...\n");
   generateDirDocs(*g_outputList);
   g_s.end();
@@ -12815,96 +12697,11 @@ void generateOutput()
   writeTagFile();
   g_s.end();
 
-  if (Config_getBool(GENERATE_XML))
-  {
-    g_s.begin("Generating XML output...\n");
-    Doxygen::generatingXmlOutput=TRUE;
-    generateXML();
-    Doxygen::generatingXmlOutput=FALSE;
-    g_s.end();
-  }
-  if (Config_getBool(GENERATE_SQLITE3))
-  {
-    g_s.begin("Generating SQLITE3 output...\n");
-    generateSqlite3();
-    g_s.end();
-  }
-
-  if (Config_getBool(GENERATE_AUTOGEN_DEF))
-  {
-    g_s.begin("Generating AutoGen DEF output...\n");
-    generateDEF();
-    g_s.end();
-  }
-  if (Config_getBool(GENERATE_PERLMOD))
-  {
-    g_s.begin("Generating Perl module output...\n");
-    generatePerlMod();
-    g_s.end();
-  }
-  if (generateHtml && searchEngine && serverBasedSearch)
-  {
-    g_s.begin("Generating search index\n");
-    if (Doxygen::searchIndex.kind()==SearchIndexIntf::Internal) // write own search index
-    {
-      HtmlGenerator::writeSearchPage();
-      Doxygen::searchIndex.write(Config_getString(HTML_OUTPUT)+"/search/search.idx");
-    }
-    else // write data for external search index
-    {
-      HtmlGenerator::writeExternalSearchPage();
-      QCString searchDataFile = Config_getString(SEARCHDATA_FILE);
-      if (searchDataFile.isEmpty())
-      {
-        searchDataFile="searchdata.xml";
-      }
-      if (!Portable::isAbsolutePath(searchDataFile.data()))
-      {
-        searchDataFile.prepend(Config_getString(OUTPUT_DIRECTORY)+"/");
-      }
-      Doxygen::searchIndex.write(searchDataFile);
-    }
-    g_s.end();
-  }
-
-  if (generateRtf)
-  {
-    g_s.begin("Combining RTF output...\n");
-    if (!RTFGenerator::preProcessFileInplace(Config_getString(RTF_OUTPUT),"refman.rtf"))
-    {
-      err("An error occurred during post-processing the RTF files!\n");
-    }
-    g_s.end();
-  }
-
-  g_s.begin("Running plantuml with JAVA...\n");
-  PlantumlManager::instance().run();
+  g_s.begin("Generating XML output...\n");
+  Doxygen::generatingXmlOutput=TRUE;
+  std::vector<TextStream> xml_files = generateXML();
+  Doxygen::generatingXmlOutput=FALSE;
   g_s.end();
-
-  if (Config_getBool(HAVE_DOT))
-  {
-    g_s.begin("Running dot...\n");
-    DotManager::instance()->run();
-    g_s.end();
-  }
-
-  if (generateHtml &&
-      Config_getBool(GENERATE_HTMLHELP) &&
-      !Config_getString(HHC_LOCATION).isEmpty())
-  {
-    g_s.begin("Running html help compiler...\n");
-    runHtmlHelpCompiler();
-    g_s.end();
-  }
-
-  if ( generateHtml &&
-       Config_getBool(GENERATE_QHP) &&
-      !Config_getString(QHG_LOCATION).isEmpty())
-  {
-    g_s.begin("Running qhelpgenerator...\n");
-    runQHelpGenerator();
-    g_s.end();
-  }
 
   g_outputList->cleanup();
 
@@ -12963,4 +12760,6 @@ void generateOutput()
   g_successfulRun=TRUE;
 
   //dumpDocNodeSizes();
+
+  return xml_files;
 }
