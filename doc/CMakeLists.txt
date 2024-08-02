@@ -24,9 +24,11 @@ configure_file(${PROJECT_SOURCE_DIR}/doc/doxyindexer.1      ${PROJECT_BINARY_DIR
 
 
 include(GNUInstallDirs)
-install(FILES
-    "${PROJECT_BINARY_DIR}/man/doxygen.1"
-    DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+if (build_doc)
+    install(FILES
+        "${PROJECT_BINARY_DIR}/man/doxygen.1"
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+endif()
 
 if (build_search)
     install(FILES

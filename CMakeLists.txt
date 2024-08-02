@@ -265,7 +265,6 @@ if (build_doc_chm)
     endif ()
 endif ()
 
-# always parse doc directory to at least install man pages
 add_subdirectory(doc)
 if (build_doc)
     add_subdirectory(examples)
