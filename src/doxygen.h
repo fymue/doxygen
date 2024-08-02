@@ -138,7 +138,7 @@ void readConfiguration(int argc, char **argv);
 void checkConfiguration();
 void adjustConfiguration();
 void parseInput();
-void generateOutput();
+std::vector<TextStream> generateOutput();
 void cleanUpDoxygen();
 void readFileOrDirectory(const QCString &s,
                         FileNameLinkedMap *fnDict,

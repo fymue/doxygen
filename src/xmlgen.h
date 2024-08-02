@@ -60,6 +60,6 @@ class XMLCodeGenerator : public OutputCodeIntf
     bool m_insideSpecialHL;
 };
 
-void generateXML();
+std::vector<TextStream> generateXML();
 
 #endif
