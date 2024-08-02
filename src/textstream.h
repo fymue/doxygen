@@ -231,6 +231,15 @@ class TextStream final
       return m_buffer;
     }
 
+    const char *c_str() const
+    {
+      return m_buffer.c_str();
+    }
+
+    size_t size() const {
+      return m_buffer.size();
+    }
+
     /** Sets the buffer's contents to string \a s.
      *  Any data already in the buffer will be flushed.
      */
