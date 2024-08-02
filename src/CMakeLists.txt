@@ -411,3 +411,5 @@ set_project_warnings(doxygen)
 set_project_coverage(doxycfg)
 set_project_coverage(doxymain)
 set_project_coverage(doxygen)
+
+install(TARGETS doxygen DESTINATION lib)

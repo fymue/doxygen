@@ -1,6 +1,6 @@
 #include <vector>
 #include <string>
-#include <Python.h>
+#include <python3.10/Python.h>
 #include "doxygen.h"
 #include "textstream.h"
 
@@ -40,10 +40,16 @@ static PyObject *convert_xml_data_to_pyobject() {
 /**
  * \brief Exported entry point function that can be called directly from
  *        Python to generate XML output based on the provided Doxyfile path.
- * \param [in] doxyfilePath Path to the doxygen configuration file
+ * \param [in] self Reference to Python module that will contain this function
+ * \param [in] args Tuple of arguments passed to this function
  * \return Python object containing the generated XML data
  */
-extern "C" PyObject *generate_xml_output(char *doxyfilePath) {
+extern "C" PyObject *generate_xml_output(PyObject *self, PyObject *args) {
+  char *doxyfilePath = NULL;
+  if(!PyArg_ParseTuple(args, "s", &doxyfilePath)) {
+    return NULL;
+  }
+
   int argc = 2;
   char *argv[2];
 
@@ -59,4 +65,22 @@ extern "C" PyObject *generate_xml_output(char *doxyfilePath) {
 
   PyObject *generated_xml_files = convert_xml_data_to_pyobject();
   return generated_xml_files;
+}
+
+static PyMethodDef generateXmlOutput[] = {
+  {"generate_xml_output", generate_xml_output, METH_VARARGS,
+  "Generate doxygen XML output and return it directly to Python"},
+  {NULL, NULL, 0, NULL}
+};
+
+static struct PyModuleDef doxygenModule = {
+  PyModuleDef_HEAD_INIT,
+  "doxygen",
+  "Generate doxygen XML output and return it directly to Python",
+  -1,
+  generateXmlOutput
+};
+
+PyMODINIT_FUNC PyInit_libdoxygen(void) {
+  return PyModule_Create(&doxygenModule);
 }
