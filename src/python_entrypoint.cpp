@@ -1,6 +1,6 @@
 #include <vector>
 #include <string>
-#include <python3.10/Python.h>
+#include <Python.h>
 #include "doxygen.h"
 #include "textstream.h"
 
