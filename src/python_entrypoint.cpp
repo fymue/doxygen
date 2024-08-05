@@ -14,26 +14,48 @@ static PyObject *convert_xml_data_to_pyobject() {
   std::vector<TextStream> xml_files = generateOutput();
   Py_ssize_t total_files = xml_files.size();
 
-  PyObject *xml_files_list = PyList_New(total_files);
-  if (!xml_files_list) {
+  if (total_files == 0) {
     PyErr_SetString(
-      PyExc_RuntimeError, "Error during XML output list creation");
+      PyExc_RuntimeError, "No XML output generated for provided Doxyfile input");
     return NULL;
   }
 
-  for (Py_ssize_t i = 0 ; i < total_files; ++i) {
+  size_t index_xml_idx = total_files - 1;
+
+  // output: tuple[str, dict[str,str]] -> (index.xml, dict[refid, compound.xml])
+
+  // set index.xml file string as 1st tuple value
+  PyObject *output = PyTuple_New(2);
+  PyTuple_SetItem(output, 0, PyBytes_FromStringAndSize(
+      xml_files[index_xml_idx].c_str(), xml_files[index_xml_idx].size())
+  );
+
+  // set dict[refid, compound.xml] as 2nd tuple value
+  PyObject *compound_xml_files = PyDict_New();
+  if (!compound_xml_files) {
+    PyErr_SetString(
+      PyExc_RuntimeError, "Error during XML output data creation");
+    return NULL;
+  }
+  PyTuple_SetItem(output, 1, compound_xml_files);
+
+  // add all compound XML files to dict as strings (with refid as keys)
+  for (Py_ssize_t i = 0 ; i < index_xml_idx; ++i) {
     PyObject *py_xml_file_content = PyBytes_FromStringAndSize(
       xml_files[i].c_str(), xml_files[i].size());
 
-    if (PyList_SetItem(xml_files_list, i, py_xml_file_content) != 0) {
-      Py_DecRef(xml_files_list);
+    int add_failed = PyDict_SetItemString(
+      compound_xml_files, xml_files[i].filename(), py_xml_file_content);
+
+    if (add_failed) {
+      Py_DecRef(compound_xml_files);
       PyErr_SetString(
         PyExc_RuntimeError, "Error during XML output list population");
       return NULL;
     }
   }
 
-  return xml_files_list;
+  return output;
 }
 
 /**
