@@ -550,13 +550,13 @@ class ConfigImpl
      *  \returns TRUE if successful, or FALSE if the string could not be
      *  parsed.
      */
-    bool parseString(const QCString &fn,const QCString &str,bool upd = FALSE);
+    bool parseString(const QCString &fn, const char *doxyfileContent, bool upd = FALSE);
 
     /*! Parse a configuration file with name \a fn.
      *  \returns TRUE if successful, FALSE if the file could not be
      *  opened or read.
      */
-    bool parse(const QCString &fn,bool upd = FALSE);
+    bool parse(const char *doxyfileContent, bool upd = FALSE);
 
     /*! Append user start comment
      */

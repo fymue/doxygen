@@ -134,7 +134,7 @@ class Doxygen
 };
 
 void initDoxygen();
-void readConfiguration(int argc, char **argv);
+int readConfiguration(const char *doxyfileContent);
 void checkConfiguration();
 void adjustConfiguration();
 void parseInput();
