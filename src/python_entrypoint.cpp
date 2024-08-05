@@ -12,16 +12,13 @@
  */
 static PyObject *convert_xml_data_to_pyobject() {
   std::vector<TextStream> xml_files = generateOutput();
-
   Py_ssize_t total_files = xml_files.size();
-
-  if (!Py_IsInitialized()) {
-    Py_Initialize();
-  }
 
   PyObject *xml_files_list = PyList_New(total_files);
   if (!xml_files_list) {
-    return Py_None;
+    PyErr_SetString(
+      PyExc_RuntimeError, "Error during XML output list creation");
+    return NULL;
   }
 
   for (Py_ssize_t i = 0 ; i < total_files; ++i) {
@@ -30,7 +27,9 @@ static PyObject *convert_xml_data_to_pyobject() {
 
     if (PyList_SetItem(xml_files_list, i, py_xml_file_content) != 0) {
       Py_DecRef(xml_files_list);
-      return Py_None;
+      PyErr_SetString(
+        PyExc_RuntimeError, "Error during XML output list population");
+      return NULL;
     }
   }
 
@@ -45,20 +44,22 @@ static PyObject *convert_xml_data_to_pyobject() {
  * \return Python object containing the generated XML data
  */
 extern "C" PyObject *generate_xml_output(PyObject *self, PyObject *args) {
-  char *doxyfilePath = NULL;
-  if(!PyArg_ParseTuple(args, "s", &doxyfilePath)) {
+  if (!Py_IsInitialized()) {
+    Py_Initialize();
+  }
+
+  char *doxyfileContent = NULL;
+  if(!PyArg_ParseTuple(args, "s", &doxyfileContent)) {
+    PyErr_SetString(PyExc_ValueError, "Argument must be a string");
     return NULL;
   }
 
-  int argc = 2;
-  char *argv[2];
-
-  char *doxygen = const_cast<char*>("doxygen");
-  argv[0] = doxygen;
-  argv[1] = doxyfilePath;
-
   initDoxygen();
-  readConfiguration(argc, argv);
+  if (readConfiguration(doxyfileContent) != 0) {
+    PyErr_SetString(
+      PyExc_RuntimeError, "Doxygen configuration file is malformatted");
+    return NULL;
+  }
   checkConfiguration();
   adjustConfiguration();
   parseInput();
