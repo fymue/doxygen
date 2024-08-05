@@ -1408,6 +1408,7 @@ static void generateXMLForClass(const ClassDef *cd, TextStream &ti, std::vector<
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+ classOutputFileBase(cd)+".xml";
   TextStream t;
+  t.setFilename(classOutputFileBase(cd).str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\""
@@ -1575,6 +1576,7 @@ static void generateXMLForConcept(const ConceptDef *cd, TextStream &ti, std::vec
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+cd->getOutputFileBase()+".xml";
   TextStream t;
+  t.setFilename(cd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << cd->getOutputFileBase()
@@ -1617,6 +1619,7 @@ static void generateXMLForModule(const ModuleDef *mod, TextStream &ti, std::vect
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+mod->getOutputFileBase()+".xml";
   TextStream t;
+  t.setFilename(mod->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << mod->getOutputFileBase()
@@ -1679,6 +1682,7 @@ static void generateXMLForNamespace(const NamespaceDef *nd, TextStream &ti, std:
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+nd->getOutputFileBase()+".xml";
   TextStream t;
+  t.setFilename(nd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << nd->getOutputFileBase()
@@ -1753,6 +1757,7 @@ static void generateXMLForFile(FileDef *fd, TextStream &ti, std::vector<TextStre
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+fd->getOutputFileBase()+".xml";
   TextStream t;
+  t.setFilename(fd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << fd->getOutputFileBase()
@@ -1861,6 +1866,7 @@ static void generateXMLForGroup(const GroupDef *gd, TextStream &ti, std::vector<
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+gd->getOutputFileBase()+".xml";
   TextStream t;
+  t.setFilename(gd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\""
@@ -1914,6 +1920,7 @@ static void generateXMLForDir(DirDef *dd, TextStream &ti, std::vector<TextStream
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+dd->getOutputFileBase()+".xml";
   TextStream t;
+  t.setFilename(dd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\""
@@ -1963,6 +1970,7 @@ static void generateXMLForPage(PageDef *pd, TextStream &ti, std::vector<TextStre
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+pageName+".xml";
   TextStream t;
+  t.setFilename(pageName.str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << pageName;

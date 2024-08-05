@@ -78,6 +78,11 @@ class TextStream final
       m_f = f;
     }
 
+    void setFilename(const std::string &filename)
+    {
+      m_filename = filename;
+    }
+
     /** Returns the attached std::ostream object.
      *  @see setStream()
      */
@@ -236,6 +241,10 @@ class TextStream final
       return m_buffer.c_str();
     }
 
+    const char *filename() const {
+      return m_filename.c_str();
+    }
+
     size_t size() const {
       return m_buffer.size();
     }
@@ -288,7 +297,7 @@ class TextStream final
       snprintf(buf,64,"%f",d);
       m_buffer+=buf;
     }
-    std::string m_buffer;
+    std::string m_buffer, m_filename;
     std::ostream *m_s = nullptr;
     FILE *m_f = nullptr;
 };
