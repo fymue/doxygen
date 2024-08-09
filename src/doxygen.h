@@ -133,7 +133,7 @@ class Doxygen
     static StaticInitMap             staticInitMap;
 };
 
-void initDoxygen();
+void initDoxygen(bool showProgress);
 int readConfiguration(const char *doxyfileContent);
 void checkConfiguration();
 void adjustConfiguration();
