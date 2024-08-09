@@ -109,6 +109,7 @@
 #include "trace.h"
 #include "moduledef.h"
 #include "stringutil.h"
+#include "tqdm.h"
 
 #include <sqlite3.h>
 
@@ -185,6 +186,9 @@ static bool             g_dumpSymbolMap = FALSE;
 static const StringUnorderedSet g_compoundKeywords =
 { "template class", "template struct", "class", "struct", "union", "interface", "exception" };
 
+static bool showProgress = false;
+static tqdm::ProgressBar progressDisplay(83);  // count of g_s.begin()
+
 void clearAll()
 {
   g_inputFiles.clear();
@@ -217,12 +221,18 @@ class Statistics
     Statistics() {}
     void begin(const char *name)
     {
-      msg("%s", name);
+      if (!showProgress) {
+        msg("%s", name);
+      }
       stats.emplace_back(name,0);
       startTime = std::chrono::steady_clock::now();
     }
     void end()
     {
+      if (showProgress) {
+        progressDisplay.update(1);
+      }
+
       std::chrono::steady_clock::time_point endTime = std::chrono::steady_clock::now();
       stats.back().elapsed = static_cast<double>(std::chrono::duration_cast<
                                 std::chrono::microseconds>(endTime - startTime).count())/1000000.0;
@@ -10973,7 +10983,7 @@ template<class T> std::function< std::unique_ptr<T>() > make_parser_factory()
   return []() { return std::make_unique<T>(); };
 }
 
-void initDoxygen()
+void initDoxygen(bool showProgressDisplay = false)
 {
   initResources();
   QCString lang = Portable::getenv("LC_ALL");
@@ -11039,6 +11049,12 @@ void initDoxygen()
   Doxygen::mscFileNameLinkedMap = nullptr;
   Doxygen::diaFileNameLinkedMap = nullptr;
 
+  if (showProgressDisplay) {
+    showProgress = true;
+    progressDisplay.set_ostream(std::cout);
+    progressDisplay.set_min_update_time(0.01);
+    progressDisplay.set_prefix("Generating doxygen XML");
+  }
 }
 
 void cleanUpDoxygen()
@@ -12235,6 +12251,10 @@ std::vector<TextStream> generateOutput()
   g_successfulRun=TRUE;
 
   //dumpDocNodeSizes();
+
+  if (showProgress) {
+    progressDisplay.fill();
+  }
 
   return xml_files;
 }
