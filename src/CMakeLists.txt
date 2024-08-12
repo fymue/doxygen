@@ -341,16 +341,18 @@ endif()
 ##add_library(doxymain STATIC ${GENERATED_SRC}/${lex_file}.l.h)
 ##endforeach()
 
-add_executable(doxygen
-    main.cpp
-    ${PROJECT_SOURCE_DIR}/templates/icon/doxygen.rc
+add_library(doxygen SHARED python_entrypoint.cpp)
+set_target_properties(doxygen PROPERTIES
+  C_VISIBILITY_PRESET default
+  CXX_VISIBILITY_PRESET default
+  VISIBILITY_INLINES_HIDDEN OFF
 )
+target_include_directories(doxygen PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_link_directories(doxygen PRIVATE ${Python_LIBRARY_DIRS})
 
 # enable to monitor compilation times
 #set_property(TARGET doxymain PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
 
-include(ApplyEditbin)
-apply_editbin(doxygen console)
 
 add_sanitizers(doxygen)
 
@@ -399,6 +401,7 @@ target_link_libraries(doxygen PRIVATE
     ${CLANG_LIBS}
     ${COVERAGE_LINKER_FLAGS}
     ${DOXYGEN_EXTRA_LINK_OPTIONS}
+    ${PYTHON_LIBRARIES}
 )
 
 set_project_warnings(doxycfg)
@@ -409,4 +412,4 @@ set_project_coverage(doxycfg)
 set_project_coverage(doxymain)
 set_project_coverage(doxygen)
 
-install(TARGETS doxygen DESTINATION bin)
+install(TARGETS doxygen DESTINATION lib)

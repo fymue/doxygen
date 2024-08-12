@@ -109,6 +109,7 @@
 #include "trace.h"
 #include "moduledef.h"
 #include "stringutil.h"
+#include "tqdm.h"
 
 #include <sqlite3.h>
 
@@ -185,6 +186,9 @@ static bool             g_dumpSymbolMap = FALSE;
 static const StringUnorderedSet g_compoundKeywords =
 { "template class", "template struct", "class", "struct", "union", "interface", "exception" };
 
+static bool showProgress = false;
+static tqdm::ProgressBar progressDisplay(83);  // count of g_s.begin()
+
 void clearAll()
 {
   g_inputFiles.clear();
@@ -217,12 +221,18 @@ class Statistics
     Statistics() {}
     void begin(const char *name)
     {
-      msg("%s", name);
+      if (!showProgress) {
+        msg("%s", name);
+      }
       stats.emplace_back(name,0);
       startTime = std::chrono::steady_clock::now();
     }
     void end()
     {
+      if (showProgress) {
+        progressDisplay.update(1);
+      }
+
       std::chrono::steady_clock::time_point endTime = std::chrono::steady_clock::now();
       stats.back().elapsed = static_cast<double>(std::chrono::duration_cast<
                                 std::chrono::microseconds>(endTime - startTime).count())/1000000.0;
@@ -10973,7 +10983,7 @@ template<class T> std::function< std::unique_ptr<T>() > make_parser_factory()
   return []() { return std::make_unique<T>(); };
 }
 
-void initDoxygen()
+void initDoxygen(bool showProgressDisplay = false)
 {
   initResources();
   QCString lang = Portable::getenv("LC_ALL");
@@ -11039,6 +11049,12 @@ void initDoxygen()
   Doxygen::mscFileNameLinkedMap = nullptr;
   Doxygen::diaFileNameLinkedMap = nullptr;
 
+  if (showProgressDisplay) {
+    showProgress = true;
+    progressDisplay.set_ostream(std::cout);
+    progressDisplay.set_min_update_time(0.01);
+    progressDisplay.set_prefix("Generating doxygen XML");
+  }
 }
 
 void cleanUpDoxygen()
@@ -11084,411 +11100,17 @@ static int computeIdealCacheParam(size_t v)
   return std::max(0,std::min(r-16,9));
 }
 
-void readConfiguration(int argc, char **argv)
+int readConfiguration(const char *doxyfileContent)
 {
-  QCString versionString = getFullVersion();
-
-  // helper that calls \a func to write to file \a fileName via a TextStream
-  auto writeFile = [](const char *fileName,std::function<void(TextStream&)> func) -> bool
-  {
-    std::ofstream f;
-    if (openOutputFile(fileName,f))
-    {
-      TextStream t(&f);
-      func(t);
-      return true;
-    }
-    return false;
-  };
-
-
-  /**************************************************************************
-   *             Handle arguments                                           *
-   **************************************************************************/
-
-  int optInd=1;
-  QCString configName;
-  QCString traceName;
-  bool genConfig=false;
-  bool shortList=false;
-  bool traceTiming=true;
-  Config::CompareMode diffList=Config::CompareMode::Full;
-  bool updateConfig=false;
-  bool quiet = false;
-  while (optInd<argc && argv[optInd][0]=='-' &&
-               (isalpha(argv[optInd][1]) || argv[optInd][1]=='?' ||
-                argv[optInd][1]=='-')
-        )
-  {
-    switch(argv[optInd][1])
-    {
-      case 'g':
-        {
-          genConfig=TRUE;
-        }
-        break;
-      case 'l':
-        {
-          QCString layoutName;
-          if (optInd+1>=argc)
-          {
-            layoutName="DoxygenLayout.xml";
-          }
-          else
-          {
-            layoutName=argv[optInd+1];
-          }
-          writeDefaultLayoutFile(layoutName);
-          cleanUpDoxygen();
-          exit(0);
-        }
-        break;
-      case 'd':
-        {
-          QCString debugLabel=getArg(argc,argv,optInd);
-          if (debugLabel.isEmpty())
-          {
-            devUsage();
-            cleanUpDoxygen();
-            exit(0);
-          }
-          int retVal = Debug::setFlagStr(debugLabel);
-          if (!retVal)
-          {
-            err("option \"-d\" has unknown debug specifier: \"%s\".\n",qPrint(debugLabel));
-            devUsage();
-            cleanUpDoxygen();
-            exit(1);
-          }
-        }
-        break;
-      case 't':
-        {
-#if ENABLE_TRACING
-          if (!strcmp(argv[optInd]+1,"t_notime")) traceTiming = false;
-          else if (!strcmp(argv[optInd]+1,"t")) traceTiming=true;
-          else
-          {
-            err("option should be \"-t\" or \"-t_notime\", found: \"%s\".\n",argv[optInd]);
-            cleanUpDoxygen();
-            exit(1);
-          }
-          if (optInd+1>=argc || argv[optInd+1][0] == '-') // no file name given
-          {
-            traceName="stdout";
-          }
-          else
-          {
-            traceName=argv[optInd+1];
-            optInd++;
-          }
-#else
-          err("support for option \"-t\" has not been compiled in (use a debug build or a release build with tracing enabled).\n");
-          cleanUpDoxygen();
-          exit(1);
-#endif
-        }
-        break;
-      case 'x':
-        if (!strcmp(argv[optInd]+1,"x_noenv")) diffList=Config::CompareMode::CompressedNoEnv;
-        else if (!strcmp(argv[optInd]+1,"x")) diffList=Config::CompareMode::Compressed;
-        else
-        {
-          err("option should be \"-x\" or \"-x_noenv\", found: \"%s\".\n",argv[optInd]);
-          cleanUpDoxygen();
-          exit(1);
-        }
-        break;
-      case 's':
-        shortList=TRUE;
-        break;
-      case 'u':
-        updateConfig=TRUE;
-        break;
-      case 'e':
-        {
-          QCString formatName=getArg(argc,argv,optInd);
-          if (formatName.isEmpty())
-          {
-            err("option \"-e\" is missing format specifier rtf.\n");
-            cleanUpDoxygen();
-            exit(1);
-          }
-          if (qstricmp(formatName.data(),"rtf")==0)
-          {
-            if (optInd+1>=argc)
-            {
-              err("option \"-e rtf\" is missing an extensions file name\n");
-              cleanUpDoxygen();
-              exit(1);
-            }
-            writeFile(argv[optInd+1],RTFGenerator::writeExtensionsFile);
-            cleanUpDoxygen();
-            exit(0);
-          }
-          err("option \"-e\" has invalid format specifier.\n");
-          cleanUpDoxygen();
-          exit(1);
-        }
-        break;
-      case 'f':
-        {
-          QCString listName=getArg(argc,argv,optInd);
-          if (listName.isEmpty())
-          {
-            err("option \"-f\" is missing list specifier.\n");
-            cleanUpDoxygen();
-            exit(1);
-          }
-          if (qstricmp(listName.data(),"emoji")==0)
-          {
-            if (optInd+1>=argc)
-            {
-              err("option \"-f emoji\" is missing an output file name\n");
-              cleanUpDoxygen();
-              exit(1);
-            }
-            writeFile(argv[optInd+1],[](TextStream &t) { EmojiEntityMapper::instance().writeEmojiFile(t); });
-            cleanUpDoxygen();
-            exit(0);
-          }
-          err("option \"-f\" has invalid list specifier.\n");
-          cleanUpDoxygen();
-          exit(1);
-        }
-        break;
-      case 'w':
-        {
-          QCString formatName=getArg(argc,argv,optInd);
-          if (formatName.isEmpty())
-          {
-            err("option \"-w\" is missing format specifier rtf, html or latex\n");
-            cleanUpDoxygen();
-            exit(1);
-          }
-          if (qstricmp(formatName.data(),"rtf")==0)
-          {
-            if (optInd+1>=argc)
-            {
-              err("option \"-w rtf\" is missing a style sheet file name\n");
-              cleanUpDoxygen();
-              exit(1);
-            }
-            if (!writeFile(argv[optInd+1],RTFGenerator::writeStyleSheetFile))
-            {
-              err("error opening RTF style sheet file %s!\n",argv[optInd+1]);
-              cleanUpDoxygen();
-              exit(1);
-            }
-            cleanUpDoxygen();
-            exit(0);
-          }
-          else if (qstricmp(formatName.data(),"html")==0)
-          {
-            Config::init();
-            if (optInd+4<argc || FileInfo("Doxyfile").exists() || FileInfo("doxyfile").exists())
-              // explicit config file mentioned or default found on disk
-            {
-              QCString df = optInd+4<argc ? argv[optInd+4] : (FileInfo("Doxyfile").exists() ? QCString("Doxyfile") : QCString("doxyfile"));
-              if (!Config::parse(df)) // parse the config file
-              {
-                err("error opening or reading configuration file %s!\n",argv[optInd+4]);
-                cleanUpDoxygen();
-                exit(1);
-              }
-            }
-            if (optInd+3>=argc)
-            {
-              err("option \"-w html\" does not have enough arguments\n");
-              cleanUpDoxygen();
-              exit(1);
-            }
-            Config::postProcess(TRUE);
-            Config::updateObsolete();
-            Config::checkAndCorrect(Config_getBool(QUIET), false);
-            setTranslator(Config_getEnum(OUTPUT_LANGUAGE));
-            writeFile(argv[optInd+1],[&](TextStream &t) { HtmlGenerator::writeHeaderFile(t,argv[optInd+3]); });
-            writeFile(argv[optInd+2],HtmlGenerator::writeFooterFile);
-            writeFile(argv[optInd+3],HtmlGenerator::writeStyleSheetFile);
-            cleanUpDoxygen();
-            exit(0);
-          }
-          else if (qstricmp(formatName.data(),"latex")==0)
-          {
-            Config::init();
-            if (optInd+4<argc || FileInfo("Doxyfile").exists() || FileInfo("doxyfile").exists())
-            {
-              QCString df = optInd+4<argc ? argv[optInd+4] : (FileInfo("Doxyfile").exists() ? QCString("Doxyfile") : QCString("doxyfile"));
-              if (!Config::parse(df))
-              {
-                err("error opening or reading configuration file %s!\n",argv[optInd+4]);
-                cleanUpDoxygen();
-                exit(1);
-              }
-            }
-            if (optInd+3>=argc)
-            {
-              err("option \"-w latex\" does not have enough arguments\n");
-              cleanUpDoxygen();
-              exit(1);
-            }
-            Config::postProcess(TRUE);
-            Config::updateObsolete();
-            Config::checkAndCorrect(Config_getBool(QUIET), false);
-            setTranslator(Config_getEnum(OUTPUT_LANGUAGE));
-            writeFile(argv[optInd+1],LatexGenerator::writeHeaderFile);
-            writeFile(argv[optInd+2],LatexGenerator::writeFooterFile);
-            writeFile(argv[optInd+3],LatexGenerator::writeStyleSheetFile);
-            cleanUpDoxygen();
-            exit(0);
-          }
-          else
-          {
-            err("Illegal format specifier \"%s\": should be one of rtf, html or latex\n",qPrint(formatName));
-            cleanUpDoxygen();
-            exit(1);
-          }
-        }
-        break;
-      case 'm':
-        g_dumpSymbolMap = TRUE;
-        break;
-      case 'v':
-        version(false);
-        cleanUpDoxygen();
-        exit(0);
-        break;
-      case 'V':
-        version(true);
-        cleanUpDoxygen();
-        exit(0);
-        break;
-      case '-':
-        if (qstrcmp(&argv[optInd][2],"help")==0)
-        {
-          usage(argv[0],versionString);
-          exit(0);
-        }
-        else if (qstrcmp(&argv[optInd][2],"version")==0)
-        {
-          version(false);
-          cleanUpDoxygen();
-          exit(0);
-        }
-        else if ((qstrcmp(&argv[optInd][2],"Version")==0) ||
-                 (qstrcmp(&argv[optInd][2],"VERSION")==0))
-        {
-          version(true);
-          cleanUpDoxygen();
-          exit(0);
-        }
-        else
-        {
-          err("Unknown option \"-%s\"\n",&argv[optInd][1]);
-          usage(argv[0],versionString);
-          exit(1);
-        }
-        break;
-      case 'b':
-        setvbuf(stdout,nullptr,_IONBF,0);
-        break;
-      case 'q':
-        quiet = true;
-        break;
-      case 'h':
-      case '?':
-        usage(argv[0],versionString);
-        exit(0);
-        break;
-      default:
-        err("Unknown option \"-%c\"\n",argv[optInd][1]);
-        usage(argv[0],versionString);
-        exit(1);
-    }
-    optInd++;
-  }
-
-  /**************************************************************************
-   *            Parse or generate the config file                           *
-   **************************************************************************/
-
-  initTracing(traceName.data(),traceTiming);
-  TRACE("Doxygen version used: {}",getFullVersion());
   Config::init();
-
-  FileInfo configFileInfo1("Doxyfile"),configFileInfo2("doxyfile");
-  if (optInd>=argc)
+  if (!Config::parse(doxyfileContent))
   {
-    if (configFileInfo1.exists())
-    {
-      configName="Doxyfile";
-    }
-    else if (configFileInfo2.exists())
-    {
-      configName="doxyfile";
-    }
-    else if (genConfig)
-    {
-      configName="Doxyfile";
-    }
-    else
-    {
-      err("Doxyfile not found and no input file specified!\n");
-      usage(argv[0],versionString);
-      exit(1);
-    }
-  }
-  else
-  {
-    FileInfo fi(argv[optInd]);
-    if (fi.exists() || qstrcmp(argv[optInd],"-")==0 || genConfig)
-    {
-      configName=argv[optInd];
-    }
-    else
-    {
-      err("configuration file %s not found!\n",argv[optInd]);
-      usage(argv[0],versionString);
-      exit(1);
-    }
-  }
-
-  if (genConfig)
-  {
-    generateConfigFile(configName,shortList);
+    err("could not open or read configuration file!\n");
     cleanUpDoxygen();
-    exit(0);
+    return 1;
   }
 
-  if (!Config::parse(configName,updateConfig,diffList))
-  {
-    err("could not open or read configuration file %s!\n",qPrint(configName));
-    cleanUpDoxygen();
-    exit(1);
-  }
-
-  if (diffList!=Config::CompareMode::Full)
-  {
-    Config::updateObsolete();
-    compareDoxyfile(diffList);
-    cleanUpDoxygen();
-    exit(0);
-  }
-
-  if (updateConfig)
-  {
-    Config::updateObsolete();
-    generateConfigFile(configName,shortList,TRUE);
-    cleanUpDoxygen();
-    exit(0);
-  }
-
-  /* Perlmod wants to know the path to the config file.*/
-  FileInfo configFileInfo(configName.str());
-  setPerlModDoxyfile(configFileInfo.absFilePath());
-
-  /* handle -q option */
-  if (quiet) Config_updateBool(QUIET,TRUE);
+  return 0;
 }
 
 /** check and resolve config options */
@@ -12040,110 +11662,6 @@ void parseInput()
   Doxygen::filterDBFileName.prepend(outputDirectory+"/");
 
   /**************************************************************************
-   *            Check/create output directories                             *
-   **************************************************************************/
-
-  QCString htmlOutput;
-  bool generateHtml = Config_getBool(GENERATE_HTML);
-  if (generateHtml)
-  {
-    htmlOutput = createOutputDirectory(outputDirectory,Config_getString(HTML_OUTPUT),"/html");
-    Config_updateString(HTML_OUTPUT,htmlOutput);
-
-    QCString sitemapUrl = Config_getString(SITEMAP_URL);
-    bool generateSitemap = !sitemapUrl.isEmpty();
-    if (generateSitemap && !sitemapUrl.endsWith("/"))
-    {
-      Config_updateString(SITEMAP_URL,sitemapUrl+"/");
-    }
-
-    // add HTML indexers that are enabled
-    bool generateHtmlHelp    = Config_getBool(GENERATE_HTMLHELP);
-    bool generateEclipseHelp = Config_getBool(GENERATE_ECLIPSEHELP);
-    bool generateQhp         = Config_getBool(GENERATE_QHP);
-    bool generateTreeView    = Config_getBool(GENERATE_TREEVIEW);
-    bool generateDocSet      = Config_getBool(GENERATE_DOCSET);
-    if (generateEclipseHelp) Doxygen::indexList->addIndex<EclipseHelp>();
-    if (generateHtmlHelp)    Doxygen::indexList->addIndex<HtmlHelp>();
-    if (generateQhp)         Doxygen::indexList->addIndex<Qhp>();
-    if (generateSitemap)     Doxygen::indexList->addIndex<Sitemap>();
-    if (generateTreeView)    Doxygen::indexList->addIndex<FTVHelp>(TRUE);
-    if (generateDocSet)      Doxygen::indexList->addIndex<DocSets>();
-    Doxygen::indexList->addIndex<Crawlmap>();
-    Doxygen::indexList->initialize();
-  }
-
-  QCString docbookOutput;
-  bool generateDocbook = Config_getBool(GENERATE_DOCBOOK);
-  if (generateDocbook)
-  {
-    docbookOutput = createOutputDirectory(outputDirectory,Config_getString(DOCBOOK_OUTPUT),"/docbook");
-    Config_updateString(DOCBOOK_OUTPUT,docbookOutput);
-  }
-
-  QCString xmlOutput;
-  bool generateXml = Config_getBool(GENERATE_XML);
-  if (generateXml)
-  {
-    xmlOutput = createOutputDirectory(outputDirectory,Config_getString(XML_OUTPUT),"/xml");
-    Config_updateString(XML_OUTPUT,xmlOutput);
-  }
-
-  QCString latexOutput;
-  bool generateLatex = Config_getBool(GENERATE_LATEX);
-  if (generateLatex)
-  {
-    latexOutput = createOutputDirectory(outputDirectory,Config_getString(LATEX_OUTPUT), "/latex");
-    Config_updateString(LATEX_OUTPUT,latexOutput);
-  }
-
-  QCString rtfOutput;
-  bool generateRtf = Config_getBool(GENERATE_RTF);
-  if (generateRtf)
-  {
-    rtfOutput = createOutputDirectory(outputDirectory,Config_getString(RTF_OUTPUT),"/rtf");
-    Config_updateString(RTF_OUTPUT,rtfOutput);
-  }
-
-  QCString manOutput;
-  bool generateMan = Config_getBool(GENERATE_MAN);
-  if (generateMan)
-  {
-    manOutput = createOutputDirectory(outputDirectory,Config_getString(MAN_OUTPUT),"/man");
-    Config_updateString(MAN_OUTPUT,manOutput);
-  }
-
-  QCString sqlOutput;
-  bool generateSql = Config_getBool(GENERATE_SQLITE3);
-  if (generateSql)
-  {
-    sqlOutput = createOutputDirectory(outputDirectory,Config_getString(SQLITE3_OUTPUT),"/sqlite3");
-    Config_updateString(SQLITE3_OUTPUT,sqlOutput);
-  }
-
-  if (Config_getBool(HAVE_DOT))
-  {
-    QCString curFontPath = Config_getString(DOT_FONTPATH);
-    if (curFontPath.isEmpty())
-    {
-      Portable::getenv("DOTFONTPATH");
-      QCString newFontPath = ".";
-      if (!curFontPath.isEmpty())
-      {
-        newFontPath+=Portable::pathListSeparator();
-        newFontPath+=curFontPath;
-      }
-      Portable::setenv("DOTFONTPATH",qPrint(newFontPath));
-    }
-    else
-    {
-      Portable::setenv("DOTFONTPATH",qPrint(curFontPath));
-    }
-  }
-
-
-
-  /**************************************************************************
    *             Handle layout file                                         *
    **************************************************************************/
 
@@ -12173,35 +11691,8 @@ void parseInput()
    *             Read and preprocess input                                  *
    **************************************************************************/
 
-  // prevent search in the output directories
-  StringVector exclPatterns = Config_getList(EXCLUDE_PATTERNS);
-  if (generateHtml)    exclPatterns.push_back(htmlOutput.str());
-  if (generateDocbook) exclPatterns.push_back(docbookOutput.str());
-  if (generateXml)     exclPatterns.push_back(xmlOutput.str());
-  if (generateLatex)   exclPatterns.push_back(latexOutput.str());
-  if (generateRtf)     exclPatterns.push_back(rtfOutput.str());
-  if (generateMan)     exclPatterns.push_back(manOutput.str());
-  Config_updateList(EXCLUDE_PATTERNS,exclPatterns);
-
   searchInputFiles();
-
   checkMarkdownMainfile();
-
-  // Notice: the order of the function calls below is very important!
-
-  if (Config_getBool(GENERATE_HTML) && !Config_getBool(USE_MATHJAX))
-  {
-    FormulaManager::instance().initFromRepository(Config_getString(HTML_OUTPUT));
-  }
-  if (Config_getBool(GENERATE_RTF))
-  {
-    FormulaManager::instance().initFromRepository(Config_getString(RTF_OUTPUT));
-  }
-  if (Config_getBool(GENERATE_DOCBOOK))
-  {
-    FormulaManager::instance().initFromRepository(Config_getString(DOCBOOK_OUTPUT));
-  }
-
   FormulaManager::instance().checkRepositories();
 
   /**************************************************************************
@@ -12605,7 +12096,7 @@ void parseInput()
   printSectionsTree();
 }
 
-void generateOutput()
+std::vector<TextStream> generateOutput()
 {
   AUTO_TRACE();
   /**************************************************************************
@@ -12622,40 +12113,9 @@ void generateOutput()
     exit(0);
   }
 
-  bool generateHtml  = Config_getBool(GENERATE_HTML);
-  bool generateLatex = Config_getBool(GENERATE_LATEX);
-  bool generateMan   = Config_getBool(GENERATE_MAN);
-  bool generateRtf   = Config_getBool(GENERATE_RTF);
-  bool generateDocbook = Config_getBool(GENERATE_DOCBOOK);
-
 
   g_outputList = new OutputList;
-  if (generateHtml)
-  {
-    g_outputList->add<HtmlGenerator>();
-    HtmlGenerator::init();
-    HtmlGenerator::writeTabData();
-  }
-  if (generateLatex)
-  {
-    g_outputList->add<LatexGenerator>();
-    LatexGenerator::init();
-  }
-  if (generateDocbook)
-  {
-    g_outputList->add<DocbookGenerator>();
-    DocbookGenerator::init();
-  }
-  if (generateMan)
-  {
-    g_outputList->add<ManGenerator>();
-    ManGenerator::init();
-  }
-  if (generateRtf)
-  {
-    g_outputList->add<RTFGenerator>();
-    RTFGenerator::init();
-  }
+
   if (Config_getBool(USE_HTAGS))
   {
     Htags::useHtags = TRUE;
@@ -12674,86 +12134,6 @@ void generateOutput()
   //printf("writing style info\n");
   g_outputList->writeStyleInfo(0); // write first part
   g_s.end();
-
-  bool searchEngine      = Config_getBool(SEARCHENGINE);
-  bool serverBasedSearch = Config_getBool(SERVER_BASED_SEARCH);
-
-  g_s.begin("Generating search indices...\n");
-  if (searchEngine && !serverBasedSearch && generateHtml)
-  {
-    createJavaScriptSearchIndex();
-  }
-
-  // generate search indices (need to do this before writing other HTML
-  // pages as these contain a drop down menu with options depending on
-  // what categories we find in this function.
-  if (generateHtml && searchEngine)
-  {
-    QCString searchDirName = Config_getString(HTML_OUTPUT)+"/search";
-    Dir searchDir(searchDirName.str());
-    if (!searchDir.exists() && !searchDir.mkdir(searchDirName.str()))
-    {
-      term("Could not create search results directory '%s' $PWD='%s'\n",
-          qPrint(searchDirName),Dir::currentDirPath().c_str());
-    }
-    HtmlGenerator::writeSearchData(searchDirName);
-    if (!serverBasedSearch) // client side search index
-    {
-      writeJavaScriptSearchIndex();
-    }
-  }
-  g_s.end();
-
-  // copy static stuff
-  if (generateHtml)
-  {
-    FTVHelp::generateTreeViewImages();
-    copyStyleSheet();
-    copyLogo(Config_getString(HTML_OUTPUT));
-    copyIcon(Config_getString(HTML_OUTPUT));
-    copyExtraFiles(Config_getList(HTML_EXTRA_FILES),"HTML_EXTRA_FILES",Config_getString(HTML_OUTPUT));
-  }
-  if (generateLatex)
-  {
-    copyLatexStyleSheet();
-    copyLogo(Config_getString(LATEX_OUTPUT));
-    copyIcon(Config_getString(LATEX_OUTPUT));
-    copyExtraFiles(Config_getList(LATEX_EXTRA_FILES),"LATEX_EXTRA_FILES",Config_getString(LATEX_OUTPUT));
-  }
-  if (generateDocbook)
-  {
-    copyLogo(Config_getString(DOCBOOK_OUTPUT));
-    copyIcon(Config_getString(DOCBOOK_OUTPUT));
-  }
-  if (generateRtf)
-  {
-    copyLogo(Config_getString(RTF_OUTPUT));
-    copyIcon(Config_getString(RTF_OUTPUT));
-    copyExtraFiles(Config_getList(RTF_EXTRA_FILES),"RTF_EXTRA_FILES",Config_getString(RTF_OUTPUT));
-  }
-
-  FormulaManager &fm = FormulaManager::instance();
-  if (fm.hasFormulas() && generateHtml
-      && !Config_getBool(USE_MATHJAX))
-  {
-    g_s.begin("Generating images for formulas in HTML...\n");
-    fm.generateImages(Config_getString(HTML_OUTPUT), Config_getEnum(HTML_FORMULA_FORMAT)==HTML_FORMULA_FORMAT_t::svg ?
-        FormulaManager::Format::Vector : FormulaManager::Format::Bitmap, FormulaManager::HighDPI::On);
-    g_s.end();
-  }
-  if (fm.hasFormulas() && generateRtf)
-  {
-    g_s.begin("Generating images for formulas in RTF...\n");
-    fm.generateImages(Config_getString(RTF_OUTPUT),FormulaManager::Format::Bitmap);
-    g_s.end();
-  }
-
-  if (fm.hasFormulas() && generateDocbook)
-  {
-    g_s.begin("Generating images for formulas in Docbook...\n");
-    fm.generateImages(Config_getString(DOCBOOK_OUTPUT),FormulaManager::Format::Bitmap);
-    g_s.end();
-  }
 
   g_s.begin("Generating example documentation...\n");
   generateExampleDocs();
@@ -12791,13 +12171,6 @@ void generateOutput()
   generateNamespaceDocs();
   g_s.end();
 
-  if (Config_getBool(GENERATE_LEGEND))
-  {
-    g_s.begin("Generating graph info page...\n");
-    writeGraphInfo(*g_outputList);
-    g_s.end();
-  }
-
   g_s.begin("Generating directory documentation...\n");
   generateDirDocs(*g_outputList);
   g_s.end();
@@ -12815,96 +12188,11 @@ void generateOutput()
   writeTagFile();
   g_s.end();
 
-  if (Config_getBool(GENERATE_XML))
-  {
-    g_s.begin("Generating XML output...\n");
-    Doxygen::generatingXmlOutput=TRUE;
-    generateXML();
-    Doxygen::generatingXmlOutput=FALSE;
-    g_s.end();
-  }
-  if (Config_getBool(GENERATE_SQLITE3))
-  {
-    g_s.begin("Generating SQLITE3 output...\n");
-    generateSqlite3();
-    g_s.end();
-  }
-
-  if (Config_getBool(GENERATE_AUTOGEN_DEF))
-  {
-    g_s.begin("Generating AutoGen DEF output...\n");
-    generateDEF();
-    g_s.end();
-  }
-  if (Config_getBool(GENERATE_PERLMOD))
-  {
-    g_s.begin("Generating Perl module output...\n");
-    generatePerlMod();
-    g_s.end();
-  }
-  if (generateHtml && searchEngine && serverBasedSearch)
-  {
-    g_s.begin("Generating search index\n");
-    if (Doxygen::searchIndex.kind()==SearchIndexIntf::Internal) // write own search index
-    {
-      HtmlGenerator::writeSearchPage();
-      Doxygen::searchIndex.write(Config_getString(HTML_OUTPUT)+"/search/search.idx");
-    }
-    else // write data for external search index
-    {
-      HtmlGenerator::writeExternalSearchPage();
-      QCString searchDataFile = Config_getString(SEARCHDATA_FILE);
-      if (searchDataFile.isEmpty())
-      {
-        searchDataFile="searchdata.xml";
-      }
-      if (!Portable::isAbsolutePath(searchDataFile.data()))
-      {
-        searchDataFile.prepend(Config_getString(OUTPUT_DIRECTORY)+"/");
-      }
-      Doxygen::searchIndex.write(searchDataFile);
-    }
-    g_s.end();
-  }
-
-  if (generateRtf)
-  {
-    g_s.begin("Combining RTF output...\n");
-    if (!RTFGenerator::preProcessFileInplace(Config_getString(RTF_OUTPUT),"refman.rtf"))
-    {
-      err("An error occurred during post-processing the RTF files!\n");
-    }
-    g_s.end();
-  }
-
-  g_s.begin("Running plantuml with JAVA...\n");
-  PlantumlManager::instance().run();
+  g_s.begin("Generating XML output...\n");
+  Doxygen::generatingXmlOutput=TRUE;
+  std::vector<TextStream> xml_files = generateXML();
+  Doxygen::generatingXmlOutput=FALSE;
   g_s.end();
-
-  if (Config_getBool(HAVE_DOT))
-  {
-    g_s.begin("Running dot...\n");
-    DotManager::instance()->run();
-    g_s.end();
-  }
-
-  if (generateHtml &&
-      Config_getBool(GENERATE_HTMLHELP) &&
-      !Config_getString(HHC_LOCATION).isEmpty())
-  {
-    g_s.begin("Running html help compiler...\n");
-    runHtmlHelpCompiler();
-    g_s.end();
-  }
-
-  if ( generateHtml &&
-       Config_getBool(GENERATE_QHP) &&
-      !Config_getString(QHG_LOCATION).isEmpty())
-  {
-    g_s.begin("Running qhelpgenerator...\n");
-    runQHelpGenerator();
-    g_s.end();
-  }
 
   g_outputList->cleanup();
 
@@ -12963,4 +12251,10 @@ void generateOutput()
   g_successfulRun=TRUE;
 
   //dumpDocNodeSizes();
+
+  if (showProgress) {
+    progressDisplay.fill();
+  }
+
+  return xml_files;
 }

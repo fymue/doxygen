@@ -14,6 +14,7 @@
  */
 
 #include <stdlib.h>
+#include <algorithm>
 
 #include "textstream.h"
 #include "xmlgen.h"
@@ -1374,7 +1375,7 @@ static void writeIncludeInfo(const IncludeInfo *ii,TextStream &t)
   }
 }
 
-static void generateXMLForClass(const ClassDef *cd,TextStream &ti)
+static void generateXMLForClass(const ClassDef *cd, TextStream &ti, std::vector<TextStream> &xml_files)
 {
   // + brief description
   // + detailed description
@@ -1406,13 +1407,8 @@ static void generateXMLForClass(const ClassDef *cd,TextStream &ti)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+ classOutputFileBase(cd)+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(classOutputFileBase(cd).str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\""
@@ -1565,9 +1561,11 @@ static void generateXMLForClass(const ClassDef *cd,TextStream &ti)
   t << "</doxygen>\n";
 
   ti << "  </compound>\n";
+
+  xml_files.push_back(std::move(t));
 }
 
-static void generateXMLForConcept(const ConceptDef *cd,TextStream &ti)
+static void generateXMLForConcept(const ConceptDef *cd, TextStream &ti, std::vector<TextStream> &xml_files)
 {
   if (cd->isReference() || cd->isHidden()) return; // skip external references.
 
@@ -1577,13 +1575,9 @@ static void generateXMLForConcept(const ConceptDef *cd,TextStream &ti)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+cd->getOutputFileBase()+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(cd->getOutputFileBase().str());
+
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << cd->getOutputFileBase()
     << "\" kind=\"concept\">\n";
@@ -1611,9 +1605,11 @@ static void generateXMLForConcept(const ConceptDef *cd,TextStream &ti)
   t << "</doxygen>\n";
 
   ti << "  </compound>\n";
+
+  xml_files.push_back(std::move(t));
 }
 
-static void generateXMLForModule(const ModuleDef *mod,TextStream &ti)
+static void generateXMLForModule(const ModuleDef *mod, TextStream &ti, std::vector<TextStream> &xml_files)
 {
   if (mod->isReference() || mod->isHidden() || !mod->isPrimaryInterface()) return;
   ti << "  <compound refid=\"" << mod->getOutputFileBase()
@@ -1622,13 +1618,9 @@ static void generateXMLForModule(const ModuleDef *mod,TextStream &ti)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+mod->getOutputFileBase()+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(mod->getOutputFileBase().str());
+
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << mod->getOutputFileBase()
     << "\" kind=\"module\">\n";
@@ -1666,9 +1658,11 @@ static void generateXMLForModule(const ModuleDef *mod,TextStream &ti)
 
   ti << "  </compound>\n";
 
+  xml_files.push_back(std::move(t));
+
 }
 
-static void generateXMLForNamespace(const NamespaceDef *nd,TextStream &ti)
+static void generateXMLForNamespace(const NamespaceDef *nd, TextStream &ti, std::vector<TextStream> &xml_files)
 {
   // + contained class definitions
   // + contained namespace definitions
@@ -1687,13 +1681,8 @@ static void generateXMLForNamespace(const NamespaceDef *nd,TextStream &ti)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+nd->getOutputFileBase()+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(nd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << nd->getOutputFileBase()
@@ -1739,9 +1728,11 @@ static void generateXMLForNamespace(const NamespaceDef *nd,TextStream &ti)
   t << "</doxygen>\n";
 
   ti << "  </compound>\n";
+
+  xml_files.push_back(std::move(t));
 }
 
-static void generateXMLForFile(FileDef *fd,TextStream &ti)
+static void generateXMLForFile(FileDef *fd, TextStream &ti, std::vector<TextStream> &xml_files)
 {
   // + includes files
   // + includedby files
@@ -1765,13 +1756,8 @@ static void generateXMLForFile(FileDef *fd,TextStream &ti)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+fd->getOutputFileBase()+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(fd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << fd->getOutputFileBase()
@@ -1854,9 +1840,11 @@ static void generateXMLForFile(FileDef *fd,TextStream &ti)
   t << "</doxygen>\n";
 
   ti << "  </compound>\n";
+
+  xml_files.push_back(std::move(t));
 }
 
-static void generateXMLForGroup(const GroupDef *gd,TextStream &ti)
+static void generateXMLForGroup(const GroupDef *gd, TextStream &ti, std::vector<TextStream> &xml_files)
 {
   // + members
   // + member groups
@@ -1877,13 +1865,8 @@ static void generateXMLForGroup(const GroupDef *gd,TextStream &ti)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+gd->getOutputFileBase()+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(gd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\""
@@ -1923,9 +1906,11 @@ static void generateXMLForGroup(const GroupDef *gd,TextStream &ti)
   t << "</doxygen>\n";
 
   ti << "  </compound>\n";
+
+  xml_files.push_back(std::move(t));
 }
 
-static void generateXMLForDir(DirDef *dd,TextStream &ti)
+static void generateXMLForDir(DirDef *dd, TextStream &ti, std::vector<TextStream> &xml_files)
 {
   if (dd->isReference()) return; // skip external references
   ti << "  <compound refid=\"" << dd->getOutputFileBase()
@@ -1934,13 +1919,8 @@ static void generateXMLForDir(DirDef *dd,TextStream &ti)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+dd->getOutputFileBase()+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(dd->getOutputFileBase().str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\""
@@ -1961,9 +1941,11 @@ static void generateXMLForDir(DirDef *dd,TextStream &ti)
   t << "</doxygen>\n";
 
   ti << "  </compound>\n";
+
+  xml_files.push_back(std::move(t));
 }
 
-static void generateXMLForPage(PageDef *pd,TextStream &ti,bool isExample)
+static void generateXMLForPage(PageDef *pd, TextStream &ti, std::vector<TextStream> &xml_files, bool isExample)
 {
   // + name
   // + title
@@ -1987,13 +1969,8 @@ static void generateXMLForPage(PageDef *pd,TextStream &ti,bool isExample)
 
   QCString outputDirectory = Config_getString(XML_OUTPUT);
   QCString fileName=outputDirectory+"/"+pageName+".xml";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  TextStream t(&f);
+  TextStream t;
+  t.setFilename(pageName.str());
 
   writeXMLHeader(t);
   t << "  <compounddef id=\"" << pageName;
@@ -2113,9 +2090,11 @@ static void generateXMLForPage(PageDef *pd,TextStream &ti,bool isExample)
   t << "</doxygen>\n";
 
   ti << "  </compound>\n";
+
+  xml_files.push_back(std::move(t));
 }
 
-void generateXML()
+std::vector<TextStream> generateXML()
 {
   // + classes
   // + concepts
@@ -2125,177 +2104,87 @@ void generateXML()
   // + related pages
   // - examples
 
-  QCString outputDirectory = Config_getString(XML_OUTPUT);
-  Dir xmlDir(outputDirectory.str());
-  createSubDirs(xmlDir);
+  size_t total_xml_files = 1;
+  total_xml_files += Doxygen::classLinkedMap->size();
+  total_xml_files += Doxygen::conceptLinkedMap->size();
+  total_xml_files += Doxygen::namespaceLinkedMap->size();
+  total_xml_files += Doxygen::inputNameLinkedMap->size();
+  total_xml_files += Doxygen::groupLinkedMap->size();
+  total_xml_files += Doxygen::pageLinkedMap->size();
+  total_xml_files += Doxygen::dirLinkedMap->size();
+  total_xml_files += ModuleManager::instance().modules().size();
+  total_xml_files += Doxygen::exampleLinkedMap->size();
 
-  ResourceMgr::instance().copyResource("xml.xsd",outputDirectory);
-  ResourceMgr::instance().copyResource("index.xsd",outputDirectory);
+  std::vector<TextStream> generated_xml_files(total_xml_files);
 
-  QCString fileName=outputDirectory+"/compound.xsd";
-  std::ofstream f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
+  TextStream index_xml;
+
+  // write index header
+  index_xml << "<?xml version='1.0' encoding='UTF-8' standalone='no'?>\n";
+  index_xml << "<doxygenindex xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ";
+  index_xml << "xsi:noNamespaceSchemaLocation=\"index.xsd\" ";
+  index_xml << "version=\"" << getDoxygenVersion() << "\" ";
+  index_xml << "xml:lang=\"" << theTranslator->trISOLang() << "\"";
+  index_xml << ">\n";
+
+  for (const auto &cd : *Doxygen::classLinkedMap)
   {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
+    generateXMLForClass(cd.get(), index_xml, generated_xml_files);
   }
+  for (const auto &cd : *Doxygen::conceptLinkedMap)
   {
-    TextStream t(&f);
-
-    // write compound.xsd, but replace special marker with the entities
-    QCString compound_xsd = ResourceMgr::instance().getAsString("compound.xsd");
-    const char *startLine = compound_xsd.data();
-    while (*startLine)
+    msg("Generating XML output for concept %s\n",qPrint(cd->name()));
+    generateXMLForConcept(cd.get(), index_xml, generated_xml_files);
+  }
+  for (const auto &nd : *Doxygen::namespaceLinkedMap)
+  {
+    msg("Generating XML output for namespace %s\n",qPrint(nd->name()));
+    generateXMLForNamespace(nd.get(), index_xml, generated_xml_files);
+  }
+  for (const auto &fn : *Doxygen::inputNameLinkedMap)
+  {
+    for (const auto &fd : *fn)
     {
-      // find end of the line
-      const char *endLine = startLine+1;
-      while (*endLine && *(endLine-1)!='\n') endLine++; // skip to end of the line including \n
-      int len=static_cast<int>(endLine-startLine);
-      if (len>0)
-      {
-        QCString s(startLine,len);
-        if (s.find("<!-- Automatically insert here the HTML entities -->")!=-1)
-        {
-          HtmlEntityMapper::instance().writeXMLSchema(t);
-        }
-        else
-        {
-          t.write(startLine,len);
-        }
-      }
-      startLine=endLine;
-    }
-  }
-  f.close();
-
-  fileName=outputDirectory+"/doxyfile.xsd";
-  f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
-  {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
-  }
-  {
-    TextStream t(&f);
-
-    // write doxyfile.xsd, but replace special marker with the entities
-    QCString doxyfile_xsd = ResourceMgr::instance().getAsString("doxyfile.xsd");
-    const char *startLine = doxyfile_xsd.data();
-    while (*startLine)
-    {
-      // find end of the line
-      const char *endLine = startLine+1;
-      while (*endLine && *(endLine-1)!='\n') endLine++; // skip to end of the line including \n
-      int len=static_cast<int>(endLine-startLine);
-      if (len>0)
-      {
-        QCString s(startLine,len);
-        if (s.find("<!-- Automatically insert here the configuration settings -->")!=-1)
-        {
-          Config::writeXSDDoxyfile(t);
-        }
-        else
-        {
-          t.write(startLine,len);
-        }
-      }
-      startLine=endLine;
+      msg("Generating XML output for file %s\n",qPrint(fd->name()));
+      generateXMLForFile(fd.get(), index_xml, generated_xml_files);
     }
   }
-  f.close();
-
-  fileName=outputDirectory+"/Doxyfile.xml";
-  f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
+  for (const auto &gd : *Doxygen::groupLinkedMap)
   {
-    err("Cannot open file %s for writing\n",fileName.data());
-    return;
+    msg("Generating XML output for group %s\n",qPrint(gd->name()));
+    generateXMLForGroup(gd.get(), index_xml, generated_xml_files);
   }
-  else
+  for (const auto &pd : *Doxygen::pageLinkedMap)
   {
-    TextStream t(&f);
-    Config::writeXMLDoxyfile(t);
+    msg("Generating XML output for page %s\n",qPrint(pd->name()));
+    generateXMLForPage(pd.get(), index_xml, generated_xml_files, FALSE);
   }
-  f.close();
-
-  fileName=outputDirectory+"/index.xml";
-  f = Portable::openOutputStream(fileName);
-  if (!f.is_open())
+  for (const auto &dd : *Doxygen::dirLinkedMap)
   {
-    err("Cannot open file %s for writing!\n",qPrint(fileName));
-    return;
+    msg("Generate XML output for dir %s\n",qPrint(dd->name()));
+    generateXMLForDir(dd.get(), index_xml, generated_xml_files);
   }
-  else
+  for (const auto &mod : ModuleManager::instance().modules())
   {
-    TextStream t(&f);
-
-    // write index header
-    t << "<?xml version='1.0' encoding='UTF-8' standalone='no'?>\n";
-    t << "<doxygenindex xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ";
-    t << "xsi:noNamespaceSchemaLocation=\"index.xsd\" ";
-    t << "version=\"" << getDoxygenVersion() << "\" ";
-    t << "xml:lang=\"" << theTranslator->trISOLang() << "\"";
-    t << ">\n";
-
-    for (const auto &cd : *Doxygen::classLinkedMap)
-    {
-      generateXMLForClass(cd.get(),t);
-    }
-    for (const auto &cd : *Doxygen::conceptLinkedMap)
-    {
-      msg("Generating XML output for concept %s\n",qPrint(cd->name()));
-      generateXMLForConcept(cd.get(),t);
-    }
-    for (const auto &nd : *Doxygen::namespaceLinkedMap)
-    {
-      msg("Generating XML output for namespace %s\n",qPrint(nd->name()));
-      generateXMLForNamespace(nd.get(),t);
-    }
-    for (const auto &fn : *Doxygen::inputNameLinkedMap)
-    {
-      for (const auto &fd : *fn)
-      {
-        msg("Generating XML output for file %s\n",qPrint(fd->name()));
-        generateXMLForFile(fd.get(),t);
-      }
-    }
-    for (const auto &gd : *Doxygen::groupLinkedMap)
-    {
-      msg("Generating XML output for group %s\n",qPrint(gd->name()));
-      generateXMLForGroup(gd.get(),t);
-    }
-    for (const auto &pd : *Doxygen::pageLinkedMap)
-    {
-      msg("Generating XML output for page %s\n",qPrint(pd->name()));
-      generateXMLForPage(pd.get(),t,FALSE);
-    }
-    for (const auto &dd : *Doxygen::dirLinkedMap)
-    {
-      msg("Generate XML output for dir %s\n",qPrint(dd->name()));
-      generateXMLForDir(dd.get(),t);
-    }
-    for (const auto &mod : ModuleManager::instance().modules())
-    {
-      msg("Generating XML output for module %s\n",qPrint(mod->name()));
-      generateXMLForModule(mod.get(),t);
-    }
-    for (const auto &pd : *Doxygen::exampleLinkedMap)
-    {
-      msg("Generating XML output for example %s\n",qPrint(pd->name()));
-      generateXMLForPage(pd.get(),t,TRUE);
-    }
-    if (Doxygen::mainPage)
-    {
-      msg("Generating XML output for the main page\n");
-      generateXMLForPage(Doxygen::mainPage.get(),t,FALSE);
-    }
-
-    //t << "  </compoundlist>\n";
-    t << "</doxygenindex>\n";
+    msg("Generating XML output for module %s\n",qPrint(mod->name()));
+    generateXMLForModule(mod.get(), index_xml, generated_xml_files);
+  }
+  for (const auto &pd : *Doxygen::exampleLinkedMap)
+  {
+    msg("Generating XML output for example %s\n",qPrint(pd->name()));
+    generateXMLForPage(pd.get(), index_xml, generated_xml_files, TRUE);
+  }
+  if (Doxygen::mainPage)
+  {
+    msg("Generating XML output for the main page\n");
+    generateXMLForPage(Doxygen::mainPage.get(), index_xml, generated_xml_files, FALSE);
   }
 
-  writeCombineScript();
-  clearSubDirs(xmlDir);
+  //t << "  </compoundlist>\n";
+  index_xml << "</doxygenindex>\n";
+  generated_xml_files.push_back(std::move(index_xml));
+
+  return generated_xml_files;
 }
 
 

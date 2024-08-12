@@ -81,7 +81,7 @@ namespace Config
    *  \returns TRUE if successful, FALSE if the file could not be
    *  opened or read.
    */
-  bool parse(const QCString &fileName,bool update=FALSE, CompareMode compareMode = CompareMode::Full);
+  bool parse(const char *doxyfileContent, bool update=FALSE, CompareMode compareMode = CompareMode::Full);
 
   /*! Post processed the parsed data. Replaces raw string values by the actual values.
    *  and replaces environment variables.
