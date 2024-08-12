@@ -85,6 +85,7 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
+set (CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if (ENABLE_CLANG_TIDY)
     find_program("CLANGTIDY" "clang-tidy")
@@ -197,6 +198,7 @@ endif ()
 
 find_program(DOT NAMES dot)
 find_package(Python REQUIRED)
+find_package(PythonLibs REQUIRED)
 find_package(FLEX REQUIRED)
 if (FLEX_VERSION VERSION_LESS 2.5.37)
   message(SEND_ERROR "Doxygen requires at least flex version 2.5.37 (installed: ${FLEX_VERSION})")
@@ -267,7 +269,6 @@ if (build_doc_chm)
     endif ()
 endif ()
 
-# always parse doc directory to at least install man pages
 add_subdirectory(doc)
 if (build_doc)
     add_subdirectory(examples)

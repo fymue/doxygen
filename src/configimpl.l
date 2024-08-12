@@ -1605,13 +1605,13 @@ static QCString configFileToString(const QCString &name)
   }
 }
 
-bool ConfigImpl::parseString(const QCString &fn,const QCString &str,bool update)
+bool ConfigImpl::parseString(const QCString &fn, const char *doxyfileContent, bool update)
 {
 #ifdef FLEX_DEBUG
   configimplYYset_debug(Debug::isFlagSet(Debug::Lex_configimpl)?1:0);
 #endif
   g_config = ConfigImpl::instance();
-  g_inputString   = str.data();
+  g_inputString   = doxyfileContent;
   g_inputPosition = 0;
   g_yyFileName    = fn;
   g_yyLineNr      = 1;
@@ -1625,11 +1625,11 @@ bool ConfigImpl::parseString(const QCString &fn,const QCString &str,bool update)
   return TRUE;
 }
 
-bool ConfigImpl::parse(const QCString &fn,bool update)
+bool ConfigImpl::parse(const char *doxyfileContent, bool update)
 {
   g_encoding = "UTF-8";
-  DebugLex debugLex(Debug::Lex_configimpl, __FILE__, qPrint(fn));
-  bool retval =  parseString(fn,configFileToString(fn), update);
+  // DebugLex debugLex(Debug::Lex_configimpl, __FILE__, qPrint(fn));
+  bool retval =  parseString("Doxyfile", doxyfileContent, update);
   return retval;
 }
 
@@ -2356,10 +2356,10 @@ void Config::writeXSDDoxyfile(TextStream &t)
   ConfigImpl::instance()->writeXSDDoxyfile(t);
 }
 
-bool Config::parse(const QCString &fileName,bool update, Config::CompareMode compareMode)
+bool Config::parse(const char *doxyfileContent, bool update, Config::CompareMode compareMode)
 {
   g_compareMode = compareMode;
-  bool parseRes = ConfigImpl::instance()->parse(fileName,update);
+  bool parseRes = ConfigImpl::instance()->parse(doxyfileContent, update);
   if (!parseRes) return parseRes;
 
   // Internally we use the default format UTF-8 and

@@ -133,12 +133,12 @@ class Doxygen
     static StaticInitMap             staticInitMap;
 };
 
-void initDoxygen();
-void readConfiguration(int argc, char **argv);
+void initDoxygen(bool showProgress);
+int readConfiguration(const char *doxyfileContent);
 void checkConfiguration();
 void adjustConfiguration();
 void parseInput();
-void generateOutput();
+std::vector<TextStream> generateOutput();
 void cleanUpDoxygen();
 void readFileOrDirectory(const QCString &s,
                         FileNameLinkedMap *fnDict,
