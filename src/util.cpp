@@ -3841,7 +3841,7 @@ QCString convertNameToFile(const QCString &name,bool allowDots,bool allowUndersc
     else
     {
       num = g_usedNamesCount;
-      g_usedNames.insert(std::make_pair(name.str(),g_usedNamesCount++));
+      g_usedNames.emplace(name.str(),g_usedNamesCount++);
     }
     result.sprintf("a%05d",num);
   }
@@ -5214,8 +5214,10 @@ QCString stripExtension(const QCString &fName)
   return stripExtensionGeneral(fName, Doxygen::htmlFileExtension);
 }
 
+#if 0
 void replaceNamespaceAliases(QCString &scope,size_t i)
 {
+  printf("replaceNamespaceAliases(%s,%zu)\n",qPrint(scope),i);
   while (i>0)
   {
     QCString ns = scope.left(i);
@@ -5230,7 +5232,9 @@ void replaceNamespaceAliases(QCString &scope,size_t i)
     }
     if (i>0 && ns==scope.left(i)) break;
   }
+  printf("result=%s\n",qPrint(scope));
 }
+#endif
 
 QCString stripPath(const QCString &s)
 {
@@ -5401,7 +5405,7 @@ bool updateLanguageMapping(const QCString &extension,const QCString &language)
     g_extLookup.erase(it2); // language was already register for this ext
   }
   //printf("registering extension %s\n",qPrint(extName));
-  g_extLookup.insert(std::make_pair(extName.str(),parserId));
+  g_extLookup.emplace(extName.str(),parserId);
   if (!Doxygen::parserManager->registerExtension(extName,it1->parserName))
   {
     err("Failed to assign extension %s to parser %s for language %s\n",
@@ -5566,7 +5570,7 @@ static MemberDef *getMemberFromSymbol(const Definition *scope,const FileDef *fil
   if (qualifierIndex!=-1)
   {
     explicitScopePart = name.left(qualifierIndex);
-    replaceNamespaceAliases(explicitScopePart,explicitScopePart.length());
+    replaceNamespaceAliases(explicitScopePart);
     name = name.mid(qualifierIndex+2);
   }
   //printf("explicitScopePart=%s\n",qPrint(explicitScopePart));

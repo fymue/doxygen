@@ -321,7 +321,7 @@ void DefinitionImpl::setId(const QCString &id)
   if (Doxygen::clangUsrMap)
   {
     //printf("DefinitionImpl::setId '%s'->'%s'\n",id,qPrint(m_impl->name));
-    Doxygen::clangUsrMap->insert(std::make_pair(id.str(),m_impl->def));
+    Doxygen::clangUsrMap->emplace(id.str(),m_impl->def);
   }
 }
 
@@ -648,7 +648,7 @@ class FilterCache
         }
         item.fileSize = size;
         // add location entry to the dictionary
-        m_cache.insert(std::make_pair(fileName.str(),item));
+        m_cache.emplace(fileName.str(),item);
         Debug::print(Debug::FilterOutput,0,"Storing new filter result for %s in %s at offset=%lld size=%zu\n",
                qPrint(fileName),qPrint(Doxygen::filterDBFileName),item.filePos,item.fileSize);
         // update end of file position
@@ -693,13 +693,13 @@ class FilterCache
     void compileLineOffsets(const QCString &fileName,const std::string &str)
     {
       // line 1 (index 0) is at offset 0
-      auto it = m_lineOffsets.insert(std::make_pair(fileName.data(),LineOffsets{0})).first;
+      auto it = m_lineOffsets.emplace(fileName.data(),LineOffsets{0}).first;
       const char *p=str.data();
       while (*p)
       {
         char c=0;
         while ((c=*p)!='\n' && c!=0) p++; // search until end of the line
-        p++;
+        if (c!=0) p++;
         it->second.push_back(p-str.data());
       }
     }
@@ -1005,7 +1005,6 @@ void DefinitionImpl::writeSourceDef(OutputList &ol,const QCString &) const
 
 void DefinitionImpl::setBodySegment(int defLine, int bls,int ble)
 {
-  //printf("setBodySegment(%d,%d) for %s\n",bls,ble,qPrint(name()));
   if (!m_impl->body) m_impl->body = make_DeepCopyUnique<BodyInfo>();
   m_impl->body->defLine   = defLine;
   m_impl->body->startLine = bls;
@@ -1207,7 +1206,7 @@ void DefinitionImpl::addSourceReferencedBy(MemberDef *md,const QCString &sourceR
 {
   if (md)
   {
-    m_impl->sourceRefByDict.insert({sourceRefName.str(),md});
+    m_impl->sourceRefByDict.emplace(sourceRefName.str(),md);
   }
 }
 
@@ -1215,7 +1214,7 @@ void DefinitionImpl::addSourceReferences(MemberDef *md,const QCString &sourceRef
 {
   if (md)
   {
-    m_impl->sourceRefsDict.insert({sourceRefName.str(),md});
+    m_impl->sourceRefsDict.emplace(sourceRefName.str(),md);
   }
 }
 
@@ -1285,6 +1284,7 @@ void DefinitionImpl::setOuterScope(Definition *d)
     m_impl->outerScope = d;
   }
   m_impl->hidden = m_impl->hidden || d->isHidden();
+  assert(m_impl->def!=m_impl->outerScope);
 }
 
 const QCString &DefinitionImpl::localName() const
@@ -1727,7 +1727,7 @@ void DefinitionImpl::mergeReferencedBy(const Definition *other)
       auto it = m_impl->sourceRefByDict.find(kv.first);
       if (it != m_impl->sourceRefByDict.end())
       {
-        m_impl->sourceRefByDict.insert({kv.first,kv.second});
+        m_impl->sourceRefByDict.emplace(kv.first,kv.second);
       }
     }
   }

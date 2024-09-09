@@ -108,6 +108,13 @@ endif()
 # produce compile_commands.json
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if (FLEX_VERSION VERSION_LESS 2.6.0)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Dregister=")
+    if (MSVC)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_ALLOW_KEYWORD_MACROS=")
+    endif()
+endif()
+
 if (CMAKE_SYSTEM MATCHES "Darwin")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "${MACOS_VERSION_MIN}" CACHE STRING "Minimum OS X deployment version" FORCE)
     set(CMAKE_CXX_FLAGS "-Wno-deprecated-register -mmacosx-version-min=${MACOS_VERSION_MIN} ${CMAKE_CXX_FLAGS}")
@@ -145,7 +152,7 @@ if (WIN32)
     endif()
 endif()
 if (CMAKE_SYSTEM_NAME MATCHES "CYGWIN")
-   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og")
+   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Og -Wa,-mbig-obj")
 
    if (CMAKE_BUILD_TYPE STREQUAL  "")
      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O1")

@@ -794,6 +794,8 @@ NONLopt [^\n]*
                                             yyextra->current->section = EntryType::makeFunction();
                                             yyextra->language = yyextra->current->lang = SrcLangExt::ObjC;
                                             yyextra->insideObjC = TRUE;
+                                            yyextra->yyBegColNr  = yyextra->yyColNr;
+                                            yyextra->yyBegLineNr = yyextra->yyLineNr;
                                             yyextra->current->virt = Specifier::Virtual;
 
                                             yyextra->current->isStatic=yytext[0]=='+';
@@ -803,11 +805,13 @@ NONLopt [^\n]*
                                         }
 <ObjCMethod>"("                         { // start of method's return type
                                           BEGIN( ObjCReturnType );
+                                          yyextra->current->type.clear();
+                                          yyextra->roundCount=0;
                                         }
 <ObjCMethod>{ID}                        { // found method name
                                           if (yyextra->current->type.isEmpty())
                                           {
-                                            yyextra->current->type = "id";
+                                            yyextra->current->type += "id";
                                           }
                                           yyextra->current->name = yytext;
                                           storeClangId(yyscanner,yytext);
@@ -818,11 +822,27 @@ NONLopt [^\n]*
                                           yyextra->current->argList.push_back(a);
                                           BEGIN( ObjCParams );
                                         }
-<ObjCReturnType>[^)]*                   { // TODO: check if nested branches are possible.
-                                          yyextra->current->type = yytext;
+<ObjCReturnType>[^()]*                  {
+                                          yyextra->current->type += yytext;
+                                        }
+<ObjCReturnType>"(^)("                  { // Block return type
+                                          yyextra->current->type += yytext;
+                                          yyextra->roundCount++;
+                                        }
+<ObjCReturnType>"("                     {
+                                          yyextra->current->type += yytext;
+                                          yyextra->roundCount++;
                                         }
 <ObjCReturnType>")"                     {
-                                          BEGIN( ObjCMethod );
+                                          if (yyextra->roundCount<=0)
+                                          {
+                                            BEGIN( ObjCMethod );
+                                          }
+                                          else
+                                          {
+                                            yyextra->current->type += yytext;
+                                            yyextra->roundCount--;
+                                          }
                                         }
 <ObjCParams>({ID})?{BN}*":"             { // Keyword of parameter
                                           QCString keyw = yytext;
@@ -1879,9 +1899,15 @@ NONLopt [^\n]*
                                         }
 <NSAliasArg>({ID}"::")*{ID}             {
                                           //printf("Inserting namespace alias %s::%s->%s\n",qPrint(yyextra->current_root->name),qPrint(yyextra->aliasName),yytext);
-                                          // TODO: namespace aliases are now treated as global entities
-                                          // while they should be aware of the scope they are in
-                                          Doxygen::namespaceAliasMap.insert({yyextra->aliasName.str(),std::string(yytext)});
+                                          std::string ctx = yyextra->current_root->name.str();
+                                          if (ctx.empty())
+                                          {
+                                            Doxygen::namespaceAliasMap.emplace(yyextra->aliasName.str(),NamespaceAliasInfo(std::string(yytext),std::string()));
+                                          }
+                                          else
+                                          {
+                                            Doxygen::namespaceAliasMap.emplace(ctx+"::"+yyextra->aliasName.str(),NamespaceAliasInfo(std::string(yytext),ctx));
+                                          }
                                         }
 <NSAliasArg>";"                         {
                                           BEGIN( FindMembers );
@@ -1914,9 +1940,8 @@ NONLopt [^\n]*
                                           //printf("PHP: adding use as relation: %s->%s\n",yytext,qPrint(yyextra->aliasName));
                                           if (!yyextra->aliasName.isEmpty())
                                           {
-                                            Doxygen::namespaceAliasMap.insert({yytext,
-                                                 std::string(removeRedundantWhiteSpace(
-                                                   substitute(yyextra->aliasName,"\\","::")).str())});
+                                            std::string aliasValue = removeRedundantWhiteSpace(substitute(yyextra->aliasName,"\\","::")).str();
+                                            Doxygen::namespaceAliasMap.emplace(yytext,NamespaceAliasInfo(aliasValue));
                                           }
                                           yyextra->aliasName.clear();
                                         }
@@ -1963,7 +1988,7 @@ NONLopt [^\n]*
                                           initEntry(yyscanner);
                                           BEGIN(Using);
                                         }
-<FindMembers>"using"{BN}+               {
+<FindMembers>"using"{BN}+/("::"{ID}("::"{ID})*)? {
                                           if (yyextra->insideJava) REJECT;
                                           yyextra->current->startLine=yyextra->yyLineNr;
                                           yyextra->current->startColumn = yyextra->yyColNr;
@@ -1971,7 +1996,7 @@ NONLopt [^\n]*
                                           BEGIN(Using);
                                         }
 <Using>"namespace"{BN}+                 { lineCount(yyscanner); BEGIN(UsingDirective); }
-<Using>({ID}{BN}*("::"|"."){BN}*)*({ID}|{OPERATOR}) {
+<Using>("::")?({ID}{BN}*("::"|"."){BN}*)*({ID}|{OPERATOR}) {
                                           lineCount(yyscanner);
                                           yyextra->current->name=yytext;
                                           yyextra->current->fileName = yyextra->fileName;
@@ -2178,6 +2203,11 @@ NONLopt [^\n]*
                                           *yyextra->pCopyHereDocGString << yytext;
                                           BEGIN(CopyHereDocEnd);
                                         }
+<CopyHereDoc>"\""{ID}/"\""              { // PHP quoted heredoc
+                                          yyextra->delimiter = &yytext[1];
+                                          *yyextra->pCopyHereDocGString << yytext;
+                                          BEGIN(CopyHereDocEnd);
+                                        }
 <CopyHereDoc>"'"{ID}/"'"                { // PHP nowdoc
                                           yyextra->delimiter = &yytext[1];
                                           *yyextra->pCopyHereDocGString << yytext;
@@ -2185,6 +2215,10 @@ NONLopt [^\n]*
                                         }
 <HereDoc>{ID}                           { // PHP heredoc
                                           yyextra->delimiter = yytext;
+                                          BEGIN(HereDocEnd);
+                                        }
+<HereDoc>"\""{ID}/"\""                  { // PHP quoted heredoc
+                                          yyextra->delimiter = &yytext[1];
                                           BEGIN(HereDocEnd);
                                         }
 <HereDoc>"'"{ID}/"'"                    { // PHP nowdoc
