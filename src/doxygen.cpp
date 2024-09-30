@@ -1557,6 +1557,7 @@ static void processTagLessClasses(const ClassDef *rootCd,
     MemberList *ml = cd->getMemberList(MemberListType::PubAttribs());
     if (ml)
     {
+      int pos=0;
       for (const auto &md : *ml)
       {
         QCString type = md->typeString();
@@ -1569,7 +1570,7 @@ static void processTagLessClasses(const ClassDef *rootCd,
             if (type.find(icd->name())!=-1) // matching tag less struct/union
             {
               QCString name = md->name();
-              if (md->isAnonymous()) name = "__unnamed" + name.right(name.length()-1)+"__";
+              if (md->isAnonymous()) name = "__unnamed" + QCString().setNum(pos++)+"__";
               if (!prefix.isEmpty()) name.prepend(prefix+".");
               //printf("    found %s for class %s\n",qPrint(name),qPrint(cd->name()));
               ClassDefMutable *ncd = createTagLessInstance(rootCd,icd,name);
@@ -3219,71 +3220,70 @@ static void buildTypedefList(const Entry *root)
       scope=root->parent()->name; //stripAnonymousNamespaceScope(root->parent->name);
     }
     ClassDefMutable *cd=getClassMutable(scope);
-    if (cd && scope+"::"==rname.left(scope.length()+2)) // found A::f inside A
+    NamespaceDef *nd=getResolvedNamespace(scope);
+    MemberName *mn = Doxygen::functionNameLinkedMap->find(rname);
+    bool found=false;
+    if (mn) // symbol with the same name already found
     {
-      // strip scope from name
-      rname=rname.right(rname.length()-root->parent()->name.length()-2);
-    }
-    QCString rtype = root->type;
-    rtype.stripPrefix("typedef ");
-    if (!root->parent()->name.isEmpty() && root->parent()->section.isCompound() && cd)
-    {
-      AUTO_TRACE_ADD("typedef '{}' in class '{}'", rname,cd->name());
-      addVariableToClass(root,cd,MemberType::Typedef,rtype,rname,root->args,false,nullptr,
-                         root->protection,Relationship::Member);
-    }
-    else
-    {
-      MemberName *mn = Doxygen::functionNameLinkedMap->find(rname);
-      bool found=false;
-      if (mn) // symbol with the same name already found
+      for (auto &imd : *mn)
       {
-        for (auto &imd : *mn)
-        {
-          bool notBothGrouped = root->groups.empty() || imd->getGroupDef()==nullptr; // see example #100
-                                                                                     //printf("imd->isTypedef()=%d imd->typeString()=%s root->type=%s\n",imd->isTypedef(),
-                                                                                     //    qPrint(imd->typeString()),qPrint(root->type));
-          if (imd->isTypedef() && notBothGrouped && imd->typeString()==rtype)
-          {
-            MemberDefMutable *md = toMemberDefMutable(imd.get());
-            if (md)
-            {
-              md->setDocumentation(root->doc,root->docFile,root->docLine);
-              md->setInbodyDocumentation(root->inbodyDocs,root->inbodyFile,root->inbodyLine);
-              md->setDocsForDefinition(!root->proto);
-              md->setBriefDescription(root->brief,root->briefFile,root->briefLine);
-              md->addSectionsToDefinition(root->anchors);
-              md->setRefItems(root->sli);
-              md->addQualifiers(root->qualifiers);
+        if (!imd->isTypedef())
+          continue;
 
-              // merge ingroup specifiers
-              if (md->getGroupDef()==nullptr && !root->groups.empty())
-              {
-                addMemberToGroups(root,md);
-              }
-              else if (md->getGroupDef()!=nullptr && root->groups.empty())
-              {
-                //printf("existing member is grouped, new member not\n");
-              }
-              else if (md->getGroupDef()!=nullptr && !root->groups.empty())
-              {
-                //printf("both members are grouped\n");
-              }
-              found=true;
-              break;
+        QCString rtype = root->type;
+        rtype.stripPrefix("typedef ");
+
+        // merge the typedefs only if they're not both grouped, and both are
+        // either part of the same class, part of the same namespace, or both
+        // are global (i.e., neither in a class or a namespace)
+        bool notBothGrouped = root->groups.empty() || imd->getGroupDef()==nullptr; // see example #100
+        bool bothSameScope = (!cd && !nd) || (cd && imd->getClassDef() == cd) || (nd && imd->getNamespaceDef() == nd);
+        //printf("imd->isTypedef()=%d imd->typeString()=%s root->type=%s\n",imd->isTypedef(),
+        //    qPrint(imd->typeString()),qPrint(root->type));
+        if (notBothGrouped && bothSameScope && imd->typeString()==rtype)
+        {
+          MemberDefMutable *md = toMemberDefMutable(imd.get());
+          if (md)
+          {
+            md->setDocumentation(root->doc,root->docFile,root->docLine);
+            md->setInbodyDocumentation(root->inbodyDocs,root->inbodyFile,root->inbodyLine);
+            md->setDocsForDefinition(!root->proto);
+            md->setBriefDescription(root->brief,root->briefFile,root->briefLine);
+            md->addSectionsToDefinition(root->anchors);
+            md->setRefItems(root->sli);
+            md->addQualifiers(root->qualifiers);
+
+            // merge ingroup specifiers
+            if (md->getGroupDef()==nullptr && !root->groups.empty())
+            {
+              addMemberToGroups(root,md);
             }
+            else if (md->getGroupDef()!=nullptr && root->groups.empty())
+            {
+              //printf("existing member is grouped, new member not\n");
+            }
+            else if (md->getGroupDef()!=nullptr && !root->groups.empty())
+            {
+              //printf("both members are grouped\n");
+            }
+            found=true;
+            break;
           }
         }
       }
-      if (found)
-      {
-        AUTO_TRACE_ADD("typedef '{}' already found",rname);
-      }
-      else
-      {
-        AUTO_TRACE_ADD("new typedef '{}'",rname);
-        addVariable(root);
-      }
+    }
+    if (found)
+    {
+      AUTO_TRACE_ADD("typedef '{}' already found",rname);
+      // mark the entry as processed, as we copied everything from it elsewhere
+      // also, otherwise, due to containing `typedef` it may later get treated
+      // as a function typedef in filterMemberDocumentation, which is incorrect
+      root->markAsProcessed();
+    }
+    else
+    {
+      AUTO_TRACE_ADD("new typedef '{}'",rname);
+      addVariable(root);
     }
 
   }
@@ -5135,6 +5135,22 @@ static void findInheritedTemplateInstances()
   }
 }
 
+static void makeTemplateInstanceRelation(const Entry *root,ClassDefMutable *cd)
+{
+  AUTO_TRACE("root->name={} cd={}",root->name,cd->name());
+  int i = root->name.find('<');
+  if (i!=-1)
+  {
+    ClassDefMutable *master = getClassMutable(root->name.left(i));
+    if (master && master!=cd && !cd->templateMaster())
+    {
+      AUTO_TRACE_ADD("class={} master={}",cd->name(),cd->templateMaster()?cd->templateMaster()->name():"<none>",master->name());
+      cd->setTemplateMaster(master);
+      master->insertExplicitTemplateInstance(cd,root->name.mid(i));
+    }
+  }
+}
+
 static void findUsedTemplateInstances()
 {
   AUTO_TRACE();
@@ -5145,7 +5161,28 @@ static void findUsedTemplateInstances()
     if (cdm)
     {
       findUsedClassesForClass(root,cdm,cdm,cdm,TRUE);
+      makeTemplateInstanceRelation(root,cdm);
       cdm->addTypeConstraints();
+    }
+  }
+}
+
+static void warnUndocumentedNamespaces()
+{
+  AUTO_TRACE();
+  for (const auto &nd : *Doxygen::namespaceLinkedMap)
+  {
+    if (!nd->hasDocumentation())
+    {
+      if ((guessSection(nd->getDefFileName()).isHeader() ||
+           nd->getLanguage() == SrcLangExt::Fortran) &&     // Fortran doesn't have header files.
+          !Config_getBool(HIDE_UNDOC_NAMESPACES)            // undocumented namespaces are visible
+         )
+      {
+        warn_undoc(nd->getDefFileName(),nd->getDefLine(), "%s %s is not documented.",
+                   nd->getLanguage() == SrcLangExt::Fortran ? "Module" : "Namespace",
+                   qPrint(nd->name()));
+      }
     }
   }
 }
@@ -7390,7 +7427,7 @@ static void findEnums(const Entry *root)
     if (!name.isEmpty())
     {
       // new enum type
-      AUTO_TRACE_ADD("new enum at line {} of {}",root->bodyLine,root->fileName);
+      AUTO_TRACE_ADD("new enum {} at line {} of {}",name,root->bodyLine,root->fileName);
       auto md = createMemberDef(
           root->fileName,root->startLine,root->startColumn,
           QCString(),name,QCString(),QCString(),
@@ -8848,7 +8885,7 @@ static void generateDocsForClassList(const std::vector<ClassDefMutable*> &classL
         auto ctx = std::make_shared<DocContext>(cd,*g_outputList);
         auto processFile = [ctx]()
         {
-          msg("Generating docs for compound %s...\n",qPrint(ctx->cd->name()));
+          msg("Generating docs for compound %s...\n",qPrint(ctx->cd->displayName()));
 
           // skip external references, anonymous compounds and
           // template instances
@@ -8886,7 +8923,7 @@ static void generateDocsForClassList(const std::vector<ClassDefMutable*> &classL
         if ( !cd->isHidden() && !cd->isEmbeddedInOuterScope() &&
               cd->isLinkableInProject() && cd->templateMaster()==nullptr)
         {
-          msg("Generating docs for compound %s...\n",qPrint(cd->name()));
+          msg("Generating docs for compound %s...\n",qPrint(cd->displayName()));
 
           cd->writeDocumentation(*g_outputList);
           cd->writeMemberList(*g_outputList);
@@ -8954,7 +8991,7 @@ static void generateConceptDocs()
         ) && !cd->isHidden() && cd->isLinkableInProject()
        )
     {
-      msg("Generating docs for concept %s...\n",qPrint(cd->name()));
+      msg("Generating docs for concept %s...\n",qPrint(cd->displayName()));
       cd->writeDocumentation(*g_outputList);
     }
   }
@@ -9923,7 +9960,7 @@ static void generateNamespaceClassDocs(const ClassLinkedRefMap &classList)
               && !ctx->cdm->isHidden() && !ctx->cdm->isEmbeddedInOuterScope()
              )
           {
-            msg("Generating docs for compound %s...\n",qPrint(ctx->cdm->name()));
+            msg("Generating docs for compound %s...\n",qPrint(ctx->cdm->displayName()));
             ctx->cdm->writeDocumentation(ctx->ol);
             ctx->cdm->writeMemberList(ctx->ol);
           }
@@ -9954,7 +9991,7 @@ static void generateNamespaceClassDocs(const ClassLinkedRefMap &classList)
             && !cd->isHidden() && !cd->isEmbeddedInOuterScope()
            )
         {
-          msg("Generating docs for compound %s...\n",qPrint(cd->name()));
+          msg("Generating docs for compound %s...\n",qPrint(cd->displayName()));
 
           cdm->writeDocumentation(*g_outputList);
           cdm->writeMemberList(*g_outputList);
@@ -9993,7 +10030,7 @@ static void generateNamespaceDocs()
       NamespaceDefMutable *ndm = toNamespaceDefMutable(nd.get());
       if (ndm)
       {
-        msg("Generating docs for namespace %s\n",qPrint(nd->name()));
+        msg("Generating docs for namespace %s\n",qPrint(nd->displayName()));
         ndm->writeDocumentation(*g_outputList);
       }
     }
@@ -11084,8 +11121,8 @@ static void devUsage()
   msg("  -b          making messages output unbuffered\n");
 #if ENABLE_TRACING
   msg("  -t        [<file|stdout|stderr>] trace debug info to file, stdout, or stderr (default file stdout)\n");
-  msg("  -t_notime [<file|stdout|stderr>] trace debug info to file, stdout, or stderr (default file stdout),\n"
-      "                                   but without time and thread information\n");
+  msg("  -t_time   [<file|stdout|stderr>] trace debug info to file, stdout, or stderr (default file stdout),\n"
+      "                                   and include time and thread information\n");
 #endif
   msg("  -d <level>  enable a debug level, such as (multiple invocations of -d are possible):\n");
   Debug::printFlags();
@@ -12096,6 +12133,10 @@ void parseInput()
 
   g_s.begin("Flushing cached template relations that have become invalid...\n");
   flushCachedTemplateRelations();
+  g_s.end();
+
+  g_s.begin("Warn for undocumented namespaces...\n");
+  warnUndocumentedNamespaces();
   g_s.end();
 
   g_s.begin("Computing class relations...\n");

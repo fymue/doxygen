@@ -915,9 +915,9 @@ int Markdown::Private::processNmdash(std::string_view data,size_t offset)
   }
   if (count>=2 && offset>=2 && qstrncmp(data.data()-2,"<!",2)==0)
   { AUTO_TRACE_EXIT("result={}",1-count); return 1-count; } // start HTML comment
-  if (count==2 && (data[2]=='>'))
+  if (count==2 && size > 2 && data[2]=='>')
   { return 0; } // end HTML comment
-  if (count==3 && (data[3]=='>'))
+  if (count==3 && size > 3 && data[3]=='>')
   { return 0; } // end HTML comment
   if (count==2 && (offset<8 || qstrncmp(data.data()-8,"operator",8)!=0)) // -- => ndash
   {
@@ -1774,6 +1774,7 @@ int Markdown::Private::isHeaderline(std::string_view data, bool allowAdjustLevel
   size_t i=0, c=0;
   const size_t size = data.size();
   while (i<size && data[i]==' ') i++;
+  if (i==size) return 0;
 
   // test of level 1 header
   if (data[i]=='=')

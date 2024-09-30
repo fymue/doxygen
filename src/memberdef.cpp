@@ -3229,7 +3229,7 @@ void MemberDefImpl::_writeEnumValues(OutputList &ol,const Definition *container,
 
         ol.startDescTableTitle();
         ol.startDoxyAnchor(cfname,cname,fmd->anchor(),fmd->name(),fmd->argsString());
-        ol.addLabel(cfname,anchor());
+        ol.addLabel(cfname,fmd->anchor());
         ol.docify(fmd->name());
         ol.disableAllBut(OutputType::Man);
         ol.writeString(" ");
@@ -3886,10 +3886,11 @@ void MemberDefImpl::writeDocumentation(const MemberList *ml,
   _writeCategoryRelation(ol);
   _writeExamples(ol);
   _writeTypeConstraints(ol);
-  writeSourceDef(ol,cname);
-  writeInlineCode(ol,cname);
-  if (hasReferencesRelation()) writeSourceRefs(ol,cname);
-  if (hasReferencedByRelation()) writeSourceReffedBy(ol,cname);
+  QCString scopeStr = getScopeString();
+  writeSourceDef(ol);
+  writeInlineCode(ol,scopeStr);
+  if (hasReferencesRelation()) writeSourceRefs(ol,scopeStr);
+  if (hasReferencedByRelation()) writeSourceReffedBy(ol,scopeStr);
   _writeCallGraph(ol);
   _writeCallerGraph(ol);
 
@@ -3954,7 +3955,7 @@ void MemberDefImpl::writeMemberDocSimple(OutputList &ol, const Definition *conta
   {
     ol.startInlineMemberType();
     ol.startDoxyAnchor(cfname,cname,memAnchor,doxyName,doxyArgs);
-    ol.addLabel(cfname,anchor());
+    ol.addLabel(cfname,memAnchor);
 
     QCString ts = fieldType();
 
@@ -4317,7 +4318,8 @@ void MemberDefImpl::setMemberGroup(MemberGroup *grp)
 QCString MemberDefImpl::getScopeString() const
 {
   QCString result;
-  if (getClassDef()) result=getClassDef()->displayName();
+  if (isStrong()) result=name();
+  else if (getClassDef()) result=getClassDef()->displayName();
   else if (getNamespaceDef()) result=getNamespaceDef()->displayName();
   return result;
 }
@@ -5489,7 +5491,8 @@ bool MemberDefImpl::isCallable() const
          isSignal() ||
          isConstructor() ||
          isDestructor() ||
-         isObjCMethod();
+         isObjCMethod() ||
+         isFriend();
 }
 
 ClassDef *MemberDefImpl::relatedAlso() const
